@@ -92,11 +92,15 @@ class FPN(nn.Sequential):
 class PANetFPN(nn.Sequential):
     def __init__(self, in_feats_shapes: list, num_channels: int = 256):
         fpn1 = FPN(in_feats_shapes, num_channels=num_channels)
+        in_feats_shapes = [
+            (n, num_channels, h, w) for (n, c, h, w) in in_feats_shapes
+        ]
         fpn2 = FPN(in_feats_shapes[::-1], num_channels=num_channels)
         layers = [
             fpn1,
             Reverse(),
-            fpn2
+            fpn2,
+            Reverse(),
         ]
         super().__init__(*layers)
 
@@ -135,6 +139,7 @@ def _load_efficientnet(name,
 
 
 def make_segm_fpn_efficientnet(name='efficientnet_b0',
+                               fpn_type='fpn',
                                out_size=(224, 224),
                                fpn_channels=256,
                                num_classes=1000,
@@ -146,9 +151,25 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
         pretrained=pretrained,
         in_channels=in_channels,
     )
+
+    feats_shapes = _get_shapes(effnet)
+    if fpn_type == 'fpn':
+        fpn = FPN(feats_shapes, num_channels=fpn_channels)
+    elif fpn_type == 'panet':
+        fpn = PANetFPN(feats_shapes, num_channels=fpn_channels)
+    elif fpn_type == 'panet+fpn':
+        feats_shapes2 = [(n, fpn_channels, h, w)
+                         for (n, c, h, w) in feats_shapes]
+        fpn = nn.Sequential(
+            PANetFPN(feats_shapes, num_channels=fpn_channels),
+            FPN(feats_shapes2, num_channels=fpn_channels)
+        )
+    else:
+        raise NotImplementedError()
+
     model = nn.Sequential(
         EfficientNetFeatureMapsExtractor(effnet),
-        FPN(_get_shapes(effnet), num_channels=fpn_channels),
+        fpn,
         SelectOne(idx=0),
         Interpolate(size=out_size, mode='bilinear', align_corners=True)
     )
