@@ -152,7 +152,7 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
         in_channels=in_channels,
     )
 
-    feats_shapes = _get_shapes(effnet)
+    feats_shapes = _get_shapes(effnet, sz=out_size[0])
     if fpn_type == 'fpn':
         fpn = FPN(feats_shapes, num_channels=fpn_channels)
     elif fpn_type == 'panet':
