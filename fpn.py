@@ -17,6 +17,16 @@ class Parallel(nn.ModuleList):
         return tuple(m(x) for m, x in zip(self, xs))
 
 
+class SequentialMultiOutput(nn.Sequential):
+    def forward(self, x):
+        outputs = [None] * len(self)
+        out = x
+        for i, module in enumerate(self):
+            out = module(out)
+            outputs[i] = out
+        return outputs
+
+
 class SequentialMultiInputOutput(nn.Sequential):
     def forward(self, inps):
         outputs = [None] * len(self)
@@ -65,9 +75,12 @@ class SelectOne(nn.Module):
 
 
 class FPN(nn.Sequential):
-    def __init__(self, in_feats_shapes: list, num_channels: int = 256):
+    def __init__(self,
+                 in_feats_shapes: list,
+                 hidden_channels: int = 256,
+                 out_channels: int = 2):
         in_convs = Parallel([
-            nn.Conv2d(s[1], num_channels, kernel_size=1)
+            nn.Conv2d(s[1], hidden_channels, kernel_size=1)
             for s in in_feats_shapes[::-1]
         ])
         upsample_and_add = SequentialMultiInputOutput(*[
@@ -76,7 +89,7 @@ class FPN(nn.Sequential):
             for s in in_feats_shapes[::-1]
         ])
         out_convs = Parallel([
-            nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1)
+            nn.Conv2d(hidden_channels, out_channels, kernel_size=3, padding=1)
             for s in in_feats_shapes[::-1]
         ])
         layers = [
@@ -109,9 +122,9 @@ def _get_shapes(m, sz=224):
     state = m.training
     m.eval()
     with torch.no_grad():
-        feats = m.extract_endpoints(torch.empty(1, 3, sz, sz))
+        feats = m(torch.empty(1, 3, sz, sz))
     m.train(state)
-    return [f.shape for f in feats.values()]
+    return [f.shape for f in feats]
 
 
 class EfficientNetFeatureMapsExtractor(nn.Module):
@@ -122,6 +135,31 @@ class EfficientNetFeatureMapsExtractor(nn.Module):
     def forward(self, x):
         feats = self.m.extract_endpoints(x)
         return list(feats.values())
+
+
+class ResNetFeatureMapsExtractor(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        stem = nn.Sequential(
+            model.conv1,
+            model.bn1,
+            model.relu,
+            model.maxpool
+        )
+        layers = SequentialMultiOutput(
+            model.layer1,
+            model.layer2,
+            model.layer3,
+            model.layer4,
+        )
+        self.m = nn.Sequential(
+            stem,
+            layers
+        )
+
+    def forward(self, x):
+        feats = self.m(x)
+        return feats
 
 
 def _load_efficientnet(name,
@@ -151,26 +189,81 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
         pretrained=pretrained,
         in_channels=in_channels,
     )
+    backbone = EfficientNetFeatureMapsExtractor(effnet)
 
-    feats_shapes = _get_shapes(effnet, sz=out_size[0])
+    feats_shapes = _get_shapes(backbone, sz=out_size[0])
     if fpn_type == 'fpn':
-        fpn = FPN(feats_shapes, num_channels=fpn_channels)
+        fpn = FPN(
+            feats_shapes,
+            hidden_channels=fpn_channels,
+            out_channels=num_classes)
     elif fpn_type == 'panet':
-        fpn = PANetFPN(feats_shapes, num_channels=fpn_channels)
+        fpn = PANetFPN(
+            feats_shapes,
+            hidden_channels=fpn_channels,
+            out_channels=num_classes)
     elif fpn_type == 'panet+fpn':
         feats_shapes2 = [(n, fpn_channels, h, w)
                          for (n, c, h, w) in feats_shapes]
         fpn = nn.Sequential(
-            PANetFPN(feats_shapes, num_channels=fpn_channels),
-            FPN(feats_shapes2, num_channels=fpn_channels)
+            PANetFPN(
+                feats_shapes,
+                hidden_channels=fpn_channels,
+                out_channels=fpn_channels),
+            FPN(feats_shapes2,
+                hidden_channels=fpn_channels,
+                out_channels=num_classes)
         )
     else:
         raise NotImplementedError()
 
     model = nn.Sequential(
-        EfficientNetFeatureMapsExtractor(effnet),
+        backbone,
         fpn,
         SelectOne(idx=0),
         Interpolate(size=out_size, mode='bilinear', align_corners=True)
     )
+    return model
+
+
+def make_segm_fpn_resnet(name='resnet18',
+                         fpn_type='fpn',
+                         out_size=(224, 224),
+                         fpn_channels=256,
+                         num_classes=1000,
+                         pretrained=True,
+                         in_channels=3):
+    resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
+    backbone = ResNetFeatureMapsExtractor(resnet)
+
+    feats_shapes = _get_shapes(backbone, sz=out_size[0])
+    if fpn_type == 'fpn':
+        fpn = FPN(
+            feats_shapes,
+            hidden_channels=fpn_channels,
+            out_channels=num_classes)
+    elif fpn_type == 'panet':
+        fpn = PANetFPN(
+            feats_shapes,
+            hidden_channels=fpn_channels,
+            out_channels=num_classes)
+    elif fpn_type == 'panet+fpn':
+        feats_shapes2 = [(n, fpn_channels, h, w)
+                         for (n, c, h, w) in feats_shapes]
+        fpn = nn.Sequential(
+            PANetFPN(
+                feats_shapes,
+                hidden_channels=fpn_channels,
+                out_channels=fpn_channels),
+            FPN(feats_shapes2,
+                hidden_channels=fpn_channels,
+                out_channels=num_classes))
+    else:
+        raise NotImplementedError()
+
+    model = nn.Sequential(
+        backbone,
+        fpn,
+        SelectOne(idx=0),
+        Interpolate(size=out_size, mode='bilinear', align_corners=True))
     return model
