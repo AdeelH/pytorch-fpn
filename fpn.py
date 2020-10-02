@@ -103,12 +103,21 @@ class FPN(nn.Sequential):
 
 
 class PANetFPN(nn.Sequential):
-    def __init__(self, in_feats_shapes: list, num_channels: int = 256):
-        fpn1 = FPN(in_feats_shapes, num_channels=num_channels)
+    def __init__(self,
+                 in_feats_shapes: list,
+                 hidden_channels: int = 256,
+                 out_channels: int = 2):
+        fpn1 = FPN(
+            in_feats_shapes,
+            hidden_channels=hidden_channels,
+            out_channels=hidden_channels)
         in_feats_shapes = [
-            (n, num_channels, h, w) for (n, c, h, w) in in_feats_shapes
+            (n, hidden_channels, h, w) for (n, c, h, w) in in_feats_shapes
         ]
-        fpn2 = FPN(in_feats_shapes[::-1], num_channels=num_channels)
+        fpn2 = FPN(
+            in_feats_shapes[::-1],
+            hidden_channels=hidden_channels,
+            out_channels=out_channels)
         layers = [
             fpn1,
             Reverse(),
