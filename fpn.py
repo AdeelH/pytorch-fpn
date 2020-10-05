@@ -196,11 +196,11 @@ class PANetFPN(nn.Sequential):
         super().__init__(*layers)
 
 
-def _get_shapes(m, sz=224):
+def _get_shapes(m, ch=3, sz=224):
     state = m.training
     m.eval()
     with torch.no_grad():
-        feats = m(torch.empty(1, 3, sz, sz))
+        feats = m(torch.empty(1, ch, sz, sz))
     m.train(state)
     return [f.shape for f in feats]
 
@@ -269,7 +269,7 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
     )
     backbone = EfficientNetFeatureMapsExtractor(effnet)
 
-    feats_shapes = _get_shapes(backbone, sz=out_size[0])
+    feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
         fpn = nn.Sequential(
             FPN(
@@ -322,7 +322,7 @@ def make_segm_fpn_resnet(name='resnet18',
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
     backbone = ResNetFeatureMapsExtractor(resnet)
 
-    feats_shapes = _get_shapes(backbone, sz=out_size[0])
+    feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
         fpn = nn.Sequential(
             FPN(
