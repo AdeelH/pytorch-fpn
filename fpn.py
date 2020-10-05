@@ -5,7 +5,9 @@ import torchvision as tv
 from containers import (
     Parallel, SequentialMultiInputOutput, SequentialMultiOutput
 )
-from layers import Residual, Interpolate, Reverse, AddTensors, SelectOne
+from layers import (
+    Residual, Interpolate, Reverse, AddTensors, SelectOne, AddAcross,
+    SplitTensor)
 
 
 class FPN(nn.Sequential):
@@ -254,7 +256,44 @@ def make_segm_fpn_resnet(name='resnet18',
                          pretrained=True,
                          in_channels=3):
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-    backbone = ResNetFeatureMapsExtractor(resnet)
+    if in_channels != 3:
+        if not pretrained:
+            old_conv_args = {
+                'out_channels': resnet.conv1.out_channels,
+                'kernel_size': resnet.conv1.kernel_size,
+                'stride': resnet.conv1.stride,
+                'padding': resnet.conv1.padding,
+                'dilation': resnet.conv1.dilation,
+                'groups': resnet.conv1.groups,
+                'bias': resnet.conv1.bias
+            }
+            resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+            backbone = ResNetFeatureMapsExtractor(resnet)
+        elif pretrained and in_channels > 3:
+            old_conv_args = {
+                'out_channels': resnet.conv1.out_channels,
+                'kernel_size': resnet.conv1.kernel_size,
+                'stride': resnet.conv1.stride,
+                'padding': resnet.conv1.padding,
+                'dilation': resnet.conv1.dilation,
+                'groups': resnet.conv1.groups,
+                'bias': resnet.conv1.bias
+            }
+            new_channels = in_channels - 3
+            new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
+            new_resnet.conv1 = nn.Conv2d(
+                in_channels=new_channels, **old_conv_args
+            )
+            backbone = nn.Sequential(
+                SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+                Parallel([
+                    ResNetFeatureMapsExtractor(resnet),
+                    ResNetFeatureMapsExtractor(new_resnet)
+                ]),
+                AddAcross()
+            )
+        else:
+            raise NotImplementedError()
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
