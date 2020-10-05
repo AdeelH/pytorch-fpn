@@ -1,77 +1,11 @@
-from functools import partial
-
 import torch
 from torch import nn
-from torch.nn import functional as F
 import torchvision as tv
 
-
-class Parallel(nn.ModuleList):
-    ''' Passes inputs through multiple `nn.Module`s in parallel.
-    Returns a tuple of outputs.
-    '''
-
-    def forward(self, xs):
-        if isinstance(xs, torch.Tensor):
-            return tuple(m(xs) for m in self)
-        return tuple(m(x) for m, x in zip(self, xs))
-
-
-class SequentialMultiOutput(nn.Sequential):
-    def forward(self, x):
-        outputs = [None] * len(self)
-        out = x
-        for i, module in enumerate(self):
-            out = module(out)
-            outputs[i] = out
-        return outputs
-
-
-class SequentialMultiInputOutput(nn.Sequential):
-    def forward(self, inps):
-        outputs = [None] * len(self)
-        out = self[0](inps[0])
-        outputs[0] = out
-        for i, (module, inp) in enumerate(zip(self[1:], inps[1:]), start=1):
-            out = module((inp, out))
-            outputs[i] = out
-        return outputs
-
-
-class Reverse(nn.Module):
-    def forward(self, inps):
-        return inps[::-1]
-
-
-class Interpolate(nn.Module):
-    def __init__(self, **kwargs):
-        super().__init__()
-        self.fn = partial(F.interpolate, **kwargs)
-
-    def forward(self, x):
-        return self.fn(x)
-
-
-class AddTensors(nn.Module):
-    def forward(self, inps):
-        return sum(inps)
-
-
-class Residual(nn.Sequential):
-    def __init__(self, layer):
-        super().__init__(
-            Parallel([nn.Identity(), layer]),
-            AddTensors()
-        )
-
-
-class SelectOne(nn.Module):
-    def __init__(self, idx):
-        super().__init__()
-        self.idx = idx
-
-    def forward(self, xs):
-        return xs[self.idx]
+from containers import (
+    Parallel, SequentialMultiInputOutput, SequentialMultiOutput
+)
+from layers import Residual, Interpolate, Reverse, AddTensors, SelectOne
 
 
 class FPN(nn.Sequential):
