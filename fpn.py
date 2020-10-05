@@ -102,6 +102,75 @@ class FPN(nn.Sequential):
         super().__init__(*layers)
 
 
+class PanopticFPN(nn.Sequential):
+    def __init__(self,
+                 in_feats_shapes: list,
+                 hidden_channels: int = 256,
+                 out_channels: int = 2,
+                 num_ups: list = None,
+                 num_groups_for_norm=32):
+
+        if num_ups is None:
+            num_ups = list(range(len(in_feats_shapes)))
+
+        in_convs = Parallel([
+            nn.Conv2d(s[1], hidden_channels, kernel_size=1)
+            for s in in_feats_shapes
+        ])
+        upsamplers = self._make_upsamplers(
+            c=hidden_channels,
+            size=in_feats_shapes[0][-2:],
+            num_ups=num_ups,
+            g=num_groups_for_norm
+        )
+        layers = [
+            in_convs,
+            upsamplers,
+            AddTensors(),
+            nn.Conv2d(hidden_channels // 2, out_channels, kernel_size=1)
+        ]
+        super().__init__(*layers)
+
+    @classmethod
+    def _make_upsamplers(cls, c, size, num_ups, g=32):
+        upsamplers = Parallel([
+            cls._upsample_feat(c, u, size, g=g) for u in num_ups
+        ])
+        return upsamplers
+
+    @classmethod
+    def _upsample_feat(cls, c, num_up, size, g=32):
+        if num_up == 0:
+            return cls._upsample_once(c, out_c=c//2, scale=1, g=g)
+        blocks = []
+        for _ in range(num_up - 1):
+            blocks.append(cls._upsample_once(c, scale=2, g=g))
+        blocks.append(cls._upsample_once(c, out_c=c // 2, size=size, g=g))
+        return nn.Sequential(*blocks)
+
+    @classmethod
+    def _upsample_once(cls, in_c, out_c=None, scale=2, size=None, g=32):
+        if out_c is None:
+            out_c = in_c
+        layers = [
+            nn.Conv2d(in_c, out_c, kernel_size=3, padding=1),
+            nn.GroupNorm(num_channels=out_c, num_groups=g),
+            nn.ReLU(inplace=True)
+        ]
+        if scale == 1:
+            return nn.Sequential(*layers)
+
+        if size is None:
+            interp = Interpolate(
+                scale_factor=scale, mode='bilinear', align_corners=True)
+        else:
+            interp = Interpolate(
+                size=size, mode='bilinear', align_corners=True)
+
+        layers.append(interp)
+        return nn.Sequential(*layers)
+
+
 class PANetFPN(nn.Sequential):
     def __init__(self,
                  in_feats_shapes: list,
@@ -202,15 +271,20 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
 
     feats_shapes = _get_shapes(backbone, sz=out_size[0])
     if fpn_type == 'fpn':
-        fpn = FPN(
+        fpn = nn.Sequential(
+            FPN(
+                feats_shapes,
+                hidden_channels=fpn_channels,
+                out_channels=num_classes
+            ),
+            SelectOne(idx=0)
+        )
+    elif fpn_type == 'panoptic':
+        fpn = PanopticFPN(
             feats_shapes,
             hidden_channels=fpn_channels,
-            out_channels=num_classes)
-    elif fpn_type == 'panet':
-        fpn = PANetFPN(
-            feats_shapes,
-            hidden_channels=fpn_channels,
-            out_channels=num_classes)
+            out_channels=num_classes
+        )
     elif fpn_type == 'panet+fpn':
         feats_shapes2 = [(n, fpn_channels, h, w)
                          for (n, c, h, w) in feats_shapes]
@@ -218,10 +292,14 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
             PANetFPN(
                 feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=fpn_channels),
-            FPN(feats_shapes2,
+                out_channels=fpn_channels
+            ),
+            FPN(
+                feats_shapes2,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes)
+                out_channels=num_classes
+            ),
+            SelectOne(idx=0)
         )
     else:
         raise NotImplementedError()
@@ -229,7 +307,6 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
     model = nn.Sequential(
         backbone,
         fpn,
-        SelectOne(idx=0),
         Interpolate(size=out_size, mode='bilinear', align_corners=True)
     )
     return model
@@ -247,15 +324,20 @@ def make_segm_fpn_resnet(name='resnet18',
 
     feats_shapes = _get_shapes(backbone, sz=out_size[0])
     if fpn_type == 'fpn':
-        fpn = FPN(
+        fpn = nn.Sequential(
+            FPN(
+                feats_shapes,
+                hidden_channels=fpn_channels,
+                out_channels=num_classes
+            ),
+            SelectOne(idx=0)
+        )
+    elif fpn_type == 'panoptic':
+        fpn = PanopticFPN(
             feats_shapes,
             hidden_channels=fpn_channels,
-            out_channels=num_classes)
-    elif fpn_type == 'panet':
-        fpn = PANetFPN(
-            feats_shapes,
-            hidden_channels=fpn_channels,
-            out_channels=num_classes)
+            out_channels=num_classes
+        )
     elif fpn_type == 'panet+fpn':
         feats_shapes2 = [(n, fpn_channels, h, w)
                          for (n, c, h, w) in feats_shapes]
@@ -263,16 +345,20 @@ def make_segm_fpn_resnet(name='resnet18',
             PANetFPN(
                 feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=fpn_channels),
-            FPN(feats_shapes2,
+                out_channels=fpn_channels
+            ),
+            FPN(
+                feats_shapes2,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes))
+                out_channels=num_classes
+            ),
+            SelectOne(idx=0)
+        )
     else:
         raise NotImplementedError()
 
     model = nn.Sequential(
         backbone,
         fpn,
-        SelectOne(idx=0),
         Interpolate(size=out_size, mode='bilinear', align_corners=True))
     return model
