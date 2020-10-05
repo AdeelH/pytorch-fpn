@@ -200,10 +200,26 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
     effnet = _load_efficientnet(
         name=name,
         num_classes=num_classes,
-        pretrained=pretrained,
-        in_channels=in_channels,
+        pretrained=pretrained
     )
-    backbone = EfficientNetFeatureMapsExtractor(effnet)
+    if in_channels > 3:
+        new_channels = in_channels - 3
+        new_effnet = _load_efficientnet(
+            name=name,
+            num_classes=num_classes,
+            pretrained=pretrained,
+            in_channels=new_channels,
+        )
+        backbone = nn.Sequential(
+            SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+            Parallel([
+                EfficientNetFeatureMapsExtractor(effnet),
+                EfficientNetFeatureMapsExtractor(new_effnet)
+            ]),
+            AddAcross()
+        )
+    else:
+        backbone = EfficientNetFeatureMapsExtractor(effnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
