@@ -7,7 +7,7 @@ from containers import (
 )
 from layers import (
     Residual, Interpolate, Reverse, AddTensors, SelectOne, AddAcross,
-    SplitTensor, Debug)
+    SplitTensor)
 
 
 class FPN(nn.Sequential):
@@ -324,7 +324,6 @@ def make_segm_fpn_resnet(name='resnet18',
                     nn.Identity(),
                     ResNetFeatureMapsExtractor(new_resnet)
                 ]),
-                Debug('1'),
                 ResNetFeatureMapsExtractor(resnet, mode='fusion')
             )
         else:
