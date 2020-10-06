@@ -1,5 +1,6 @@
 from functools import partial
 
+import torch
 from torch import nn
 from torch.nn import functional as F
 
@@ -58,3 +59,21 @@ class SelectOne(nn.Module):
 
     def forward(self, xs):
         return xs[self.idx]
+
+
+def _get_shape_recurse(x):
+    if isinstance(x, torch.Tensor):
+        return x.shape
+    return [_get_shape_recurse(a) for a in x]
+
+
+class Debug(nn.Module):
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+
+    def forward(self, x):
+        print(f'{self.name}')
+        print(f'type: {type(x)}, len: {len(x)}')
+        print(f'shapes: {_get_shape_recurse(x)}')
+        return x

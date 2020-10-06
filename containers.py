@@ -23,7 +23,7 @@ class SequentialMultiOutput(nn.Sequential):
         return outputs
 
 
-class SequentialMultiInputOutput(nn.Sequential):
+class SequentialMultiInputMultiOutput(nn.Sequential):
     def forward(self, inps):
         outputs = [None] * len(self)
         out = self[0](inps[0])

@@ -3,11 +3,11 @@ from torch import nn
 import torchvision as tv
 
 from containers import (
-    Parallel, SequentialMultiInputOutput, SequentialMultiOutput
+    Parallel, SequentialMultiInputMultiOutput, SequentialMultiOutput
 )
 from layers import (
     Residual, Interpolate, Reverse, AddTensors, SelectOne, AddAcross,
-    SplitTensor)
+    SplitTensor, Debug)
 
 
 class FPN(nn.Sequential):
@@ -19,7 +19,7 @@ class FPN(nn.Sequential):
             nn.Conv2d(s[1], hidden_channels, kernel_size=1)
             for s in in_feats_shapes[::-1]
         ])
-        upsample_and_add = SequentialMultiInputOutput(*[
+        upsample_and_add = SequentialMultiInputMultiOutput(*[
             Residual(
                 Interpolate(size=s[-2:], mode='bilinear', align_corners=True))
             for s in in_feats_shapes[::-1]
@@ -152,28 +152,38 @@ class EfficientNetFeatureMapsExtractor(nn.Module):
 
 
 class ResNetFeatureMapsExtractor(nn.Module):
-    def __init__(self, model):
+    def __init__(self, model, mode=None):
         super().__init__()
+        self.mode = mode
         stem = nn.Sequential(
             model.conv1,
             model.bn1,
             model.relu,
             model.maxpool
         )
-        layers = SequentialMultiOutput(
+        layers = [
             model.layer1,
             model.layer2,
             model.layer3,
             model.layer4,
-        )
-        self.m = nn.Sequential(
-            stem,
-            layers
-        )
+        ]
+        if mode == 'fusion':
+            self.m = SequentialMultiInputMultiOutput(
+                stem,
+                *[nn.Sequential(AddTensors(), m) for m in layers]
+            )
+        else:
+            self.m = SequentialMultiOutput(
+                stem,
+                *layers
+            )
 
     def forward(self, x):
-        feats = self.m(x)
-        return feats
+        if self.mode != 'fusion':
+            return self.m(x)
+        x, inps = x
+        return self.m((x, *inps))
+
 
 
 def _load_efficientnet(name,
@@ -300,13 +310,22 @@ def make_segm_fpn_resnet(name='resnet18',
             new_resnet.conv1 = nn.Conv2d(
                 in_channels=new_channels, **old_conv_args
             )
+            # backbone = nn.Sequential(
+            #     SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+            #     Parallel([
+            #         ResNetFeatureMapsExtractor(resnet),
+            #         ResNetFeatureMapsExtractor(new_resnet)
+            #     ]),
+            #     AddAcross()
+            # )
             backbone = nn.Sequential(
                 SplitTensor(size_or_sizes=(3, new_channels), dim=1),
                 Parallel([
-                    ResNetFeatureMapsExtractor(resnet),
+                    nn.Identity(),
                     ResNetFeatureMapsExtractor(new_resnet)
                 ]),
-                AddAcross()
+                Debug('1'),
+                ResNetFeatureMapsExtractor(resnet, mode='fusion')
             )
         else:
             raise NotImplementedError()
