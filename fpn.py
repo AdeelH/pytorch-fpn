@@ -328,6 +328,8 @@ def make_segm_fpn_resnet(name='resnet18',
             )
         else:
             raise NotImplementedError()
+    else:
+        backbone = ResNetFeatureMapsExtractor(resnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
