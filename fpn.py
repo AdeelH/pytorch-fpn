@@ -2,12 +2,10 @@ import torch
 from torch import nn
 import torchvision as tv
 
-from containers import (
-    Parallel, SequentialMultiInputMultiOutput, SequentialMultiOutput
-)
-from layers import (
-    Residual, Interpolate, Reverse, AddTensors, SelectOne, AddAcross,
-    SplitTensor)
+from containers import (Parallel, SequentialMultiInputMultiOutput,
+                        SequentialMultiOutput)
+from layers import (Residual, Interpolate, Reverse, AddTensors, SelectOne,
+                    AddAcross, SplitTensor)
 
 
 class FPN(nn.Sequential):
@@ -28,6 +26,7 @@ class FPN(nn.Sequential):
             nn.Conv2d(hidden_channels, out_channels, kernel_size=3, padding=1)
             for s in in_feats_shapes[::-1]
         ])
+        # yapf: disable
         layers = [
             Reverse(),
             in_convs,
@@ -35,6 +34,7 @@ class FPN(nn.Sequential):
             out_convs,
             Reverse()
         ]
+        # yapf: enable
         super().__init__(*layers)
 
 
@@ -57,11 +57,9 @@ class PanopticFPN(nn.Sequential):
             c=hidden_channels,
             size=in_feats_shapes[0][-2:],
             num_ups=num_ups,
-            g=num_groups_for_norm
-        )
+            g=num_groups_for_norm)
         layers = [
-            in_convs,
-            upsamplers,
+            in_convs, upsamplers,
             AddTensors(),
             nn.Conv2d(hidden_channels // 2, out_channels, kernel_size=1)
         ]
@@ -69,15 +67,14 @@ class PanopticFPN(nn.Sequential):
 
     @classmethod
     def _make_upsamplers(cls, c, size, num_ups, g=32):
-        upsamplers = Parallel([
-            cls._upsample_feat(c, u, size, g=g) for u in num_ups
-        ])
+        upsamplers = Parallel(
+            [cls._upsample_feat(c, u, size, g=g) for u in num_ups])
         return upsamplers
 
     @classmethod
     def _upsample_feat(cls, c, num_up, size, g=32):
         if num_up == 0:
-            return cls._upsample_once(c, out_c=c//2, scale=1, g=g)
+            return cls._upsample_once(c, out_c=c // 2, scale=1, g=g)
         blocks = []
         for _ in range(num_up - 1):
             blocks.append(cls._upsample_once(c, scale=2, g=g))
@@ -116,19 +113,20 @@ class PANetFPN(nn.Sequential):
             in_feats_shapes,
             hidden_channels=hidden_channels,
             out_channels=hidden_channels)
-        in_feats_shapes = [
-            (n, hidden_channels, h, w) for (n, c, h, w) in in_feats_shapes
-        ]
+        in_feats_shapes = [(n, hidden_channels, h, w)
+                           for (n, c, h, w) in in_feats_shapes]
         fpn2 = FPN(
             in_feats_shapes[::-1],
             hidden_channels=hidden_channels,
             out_channels=out_channels)
+        # yapf: disable
         layers = [
             fpn1,
             Reverse(),
             fpn2,
             Reverse(),
         ]
+        # yapf: enable
         super().__init__(*layers)
 
 
@@ -155,6 +153,7 @@ class ResNetFeatureMapsExtractor(nn.Module):
     def __init__(self, model, mode=None):
         super().__init__()
         self.mode = mode
+        # yapf: disable
         stem = nn.Sequential(
             model.conv1,
             model.bn1,
@@ -167,23 +166,18 @@ class ResNetFeatureMapsExtractor(nn.Module):
             model.layer3,
             model.layer4,
         ]
+        # yapf: enable
         if mode == 'fusion':
             self.m = SequentialMultiInputMultiOutput(
-                stem,
-                *[nn.Sequential(AddTensors(), m) for m in layers]
-            )
+                stem, *[nn.Sequential(AddTensors(), m) for m in layers])
         else:
-            self.m = SequentialMultiOutput(
-                stem,
-                *layers
-            )
+            self.m = SequentialMultiOutput(stem, *layers)
 
     def forward(self, x):
         if self.mode != 'fusion':
             return self.m(x)
         x, inps = x
         return self.m((x, *inps))
-
 
 
 def _load_efficientnet(name,
@@ -195,8 +189,7 @@ def _load_efficientnet(name,
         name,
         num_classes=num_classes,
         pretrained=pretrained,
-        in_channels=in_channels
-    )
+        in_channels=in_channels)
     return model
 
 
@@ -208,10 +201,7 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
                                pretrained='imagenet',
                                in_channels=3):
     effnet = _load_efficientnet(
-        name=name,
-        num_classes=num_classes,
-        pretrained=pretrained
-    )
+        name=name, num_classes=num_classes, pretrained=pretrained)
     if in_channels > 3:
         new_channels = in_channels - 3
         new_effnet = _load_efficientnet(
@@ -225,28 +215,22 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
             Parallel([
                 EfficientNetFeatureMapsExtractor(effnet),
                 EfficientNetFeatureMapsExtractor(new_effnet)
-            ]),
-            AddAcross()
-        )
+            ]), AddAcross())
     else:
         backbone = EfficientNetFeatureMapsExtractor(effnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
         fpn = nn.Sequential(
-            FPN(
-                feats_shapes,
+            FPN(feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes
-            ),
-            SelectOne(idx=0)
-        )
+                out_channels=num_classes),
+            SelectOne(idx=0))
     elif fpn_type == 'panoptic':
         fpn = PanopticFPN(
             feats_shapes,
             hidden_channels=fpn_channels,
-            out_channels=num_classes
-        )
+            out_channels=num_classes)
     elif fpn_type == 'panet+fpn':
         feats_shapes2 = [(n, fpn_channels, h, w)
                          for (n, c, h, w) in feats_shapes]
@@ -254,24 +238,42 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
             PANetFPN(
                 feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=fpn_channels
-            ),
-            FPN(
-                feats_shapes2,
+                out_channels=fpn_channels),
+            FPN(feats_shapes2,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes
-            ),
-            SelectOne(idx=0)
-        )
+                out_channels=num_classes),
+            SelectOne(idx=0))
     else:
         raise NotImplementedError()
 
     model = nn.Sequential(
-        backbone,
-        fpn,
-        Interpolate(size=out_size, mode='bilinear', align_corners=True)
-    )
+        backbone, fpn,
+        Interpolate(size=out_size, mode='bilinear', align_corners=True))
     return model
+
+
+def make_fusion_resnet_backbone(resnet,
+                                new_channels,
+                                old_conv,
+                                old_conv_args,
+                                copy_weights=True):
+    """ crete a parallel backbone with multi-point fusion. """
+    new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
+
+    # copy over pretrained weights, repeat if new_channels > 3
+    for i in range(0, new_channels, 3):
+        pretrained_weights = old_conv.weight.data[:, i:i + 3]
+        new_conv.weight.data[:, i:i + 3] = pretrained_weights
+
+    new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
+    new_resnet.conv1 = new_conv
+
+    backbone = nn.Sequential(
+        SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+        Parallel([nn.Identity(),
+                  ResNetFeatureMapsExtractor(new_resnet)]),
+        ResNetFeatureMapsExtractor(resnet, mode='fusion'))
+    return backbone
 
 
 def make_segm_fpn_resnet(name='resnet18',
@@ -282,69 +284,46 @@ def make_segm_fpn_resnet(name='resnet18',
                          pretrained=True,
                          in_channels=3):
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-    if in_channels != 3:
+    if in_channels == 3:
+        backbone = ResNetFeatureMapsExtractor(resnet)
+    else:
+        old_conv = resnet.conv1
+        old_conv_args = {
+            'out_channels': old_conv.out_channels,
+            'kernel_size': old_conv.kernel_size,
+            'stride': old_conv.stride,
+            'padding': old_conv.padding,
+            'dilation': old_conv.dilation,
+            'groups': old_conv.groups,
+            'bias': old_conv.bias
+        }
         if not pretrained:
-            old_conv_args = {
-                'out_channels': resnet.conv1.out_channels,
-                'kernel_size': resnet.conv1.kernel_size,
-                'stride': resnet.conv1.stride,
-                'padding': resnet.conv1.padding,
-                'dilation': resnet.conv1.dilation,
-                'groups': resnet.conv1.groups,
-                'bias': resnet.conv1.bias
-            }
+            # just replace the first conv layer
             resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
             backbone = ResNetFeatureMapsExtractor(resnet)
         elif pretrained and in_channels > 3:
-            old_conv = resnet.conv1
-            old_conv_args = {
-                'out_channels': old_conv.out_channels,
-                'kernel_size': old_conv.kernel_size,
-                'stride': old_conv.stride,
-                'padding': old_conv.padding,
-                'dilation': old_conv.dilation,
-                'groups': old_conv.groups,
-                'bias': old_conv.bias
-            }
             new_channels = in_channels - 3
-            new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
-
-            for i in range(0, new_channels, 3):
-                pretrained_weights = old_conv.weight.data[:, i:i + 3]
-                new_conv.weight.data[:, i:i + 3] = pretrained_weights
-
-            new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-            new_resnet.conv1 = new_conv
-
-            backbone = nn.Sequential(
-                SplitTensor(size_or_sizes=(3, new_channels), dim=1),
-                Parallel([
-                    nn.Identity(),
-                    ResNetFeatureMapsExtractor(new_resnet)
-                ]),
-                ResNetFeatureMapsExtractor(resnet, mode='fusion')
-            )
+            backbone = make_fusion_resnet_backbone(
+                resnet,
+                new_channels,
+                old_conv,
+                old_conv_args,
+                copy_weights=True)
         else:
             raise NotImplementedError()
-    else:
-        backbone = ResNetFeatureMapsExtractor(resnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
         fpn = nn.Sequential(
-            FPN(
-                feats_shapes,
+            FPN(feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes
-            ),
-            SelectOne(idx=0)
-        )
+                out_channels=num_classes),
+            SelectOne(idx=0))
     elif fpn_type == 'panoptic':
         fpn = PanopticFPN(
             feats_shapes,
             hidden_channels=fpn_channels,
-            out_channels=num_classes
-        )
+            out_channels=num_classes)
     elif fpn_type == 'panet+fpn':
         feats_shapes2 = [(n, fpn_channels, h, w)
                          for (n, c, h, w) in feats_shapes]
@@ -352,20 +331,15 @@ def make_segm_fpn_resnet(name='resnet18',
             PANetFPN(
                 feats_shapes,
                 hidden_channels=fpn_channels,
-                out_channels=fpn_channels
-            ),
-            FPN(
-                feats_shapes2,
+                out_channels=fpn_channels),
+            FPN(feats_shapes2,
                 hidden_channels=fpn_channels,
-                out_channels=num_classes
-            ),
-            SelectOne(idx=0)
-        )
+                out_channels=num_classes),
+            SelectOne(idx=0))
     else:
         raise NotImplementedError()
 
     model = nn.Sequential(
-        backbone,
-        fpn,
+        backbone, fpn,
         Interpolate(size=out_size, mode='bilinear', align_corners=True))
     return model

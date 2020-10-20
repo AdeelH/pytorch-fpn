@@ -9,10 +9,13 @@ from containers import Parallel
 
 class Residual(nn.Sequential):
     def __init__(self, layer):
-        super().__init__(
+        # yapf: disable
+        layers = [
             Parallel([nn.Identity(), layer]),
             AddTensors()
-        )
+        ]
+        # yapf: enable
+        super().__init__(*layers)
 
 
 class Interpolate(nn.Module):
