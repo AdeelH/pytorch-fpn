@@ -257,13 +257,18 @@ def make_fusion_resnet_backbone(resnet,
                                 old_conv,
                                 old_conv_args,
                                 copy_weights=True):
-    """ crete a parallel backbone with multi-point fusion. """
+    """ Create a parallel backbone with multi-point fusion. """
     new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
 
     # copy over pretrained weights, repeat if new_channels > 3
-    for i in range(0, new_channels, 3):
-        pretrained_weights = old_conv.weight.data[:, i:i + 3]
-        new_conv.weight.data[:, i:i + 3] = pretrained_weights
+    i = 0
+    remaining_channels = new_channels
+    while remaining_channels > 0:
+        chunk_size = min(remaining_channels, 3)
+        pretrained_weights = old_conv.weight.data[:, :chunk_size]
+        new_conv.weight.data[:, i:i + chunk_size] = pretrained_weights
+        i += chunk_size
+        remaining_channels -= chunk_size
 
     new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
     new_resnet.conv1 = new_conv
