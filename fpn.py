@@ -296,28 +296,26 @@ def make_segm_fpn_resnet(name='resnet18',
             resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
             backbone = ResNetFeatureMapsExtractor(resnet)
         elif pretrained and in_channels > 3:
+            old_conv = resnet.conv1
             old_conv_args = {
-                'out_channels': resnet.conv1.out_channels,
-                'kernel_size': resnet.conv1.kernel_size,
-                'stride': resnet.conv1.stride,
-                'padding': resnet.conv1.padding,
-                'dilation': resnet.conv1.dilation,
-                'groups': resnet.conv1.groups,
-                'bias': resnet.conv1.bias
+                'out_channels': old_conv.out_channels,
+                'kernel_size': old_conv.kernel_size,
+                'stride': old_conv.stride,
+                'padding': old_conv.padding,
+                'dilation': old_conv.dilation,
+                'groups': old_conv.groups,
+                'bias': old_conv.bias
             }
             new_channels = in_channels - 3
+            new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
+
+            for i in range(0, new_channels, 3):
+                pretrained_weights = old_conv.weight.data[:, i:i + 3]
+                new_conv.weight.data[:, i:i + 3] = pretrained_weights
+
             new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-            new_resnet.conv1 = nn.Conv2d(
-                in_channels=new_channels, **old_conv_args
-            )
-            # backbone = nn.Sequential(
-            #     SplitTensor(size_or_sizes=(3, new_channels), dim=1),
-            #     Parallel([
-            #         ResNetFeatureMapsExtractor(resnet),
-            #         ResNetFeatureMapsExtractor(new_resnet)
-            #     ]),
-            #     AddAcross()
-            # )
+            new_resnet.conv1 = new_conv
+
             backbone = nn.Sequential(
                 SplitTensor(size_or_sizes=(3, new_channels), dim=1),
                 Parallel([
