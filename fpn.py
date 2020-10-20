@@ -252,7 +252,8 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
     return model
 
 
-def make_fusion_resnet_backbone(resnet,
+def make_fusion_resnet_backbone(old_resnet,
+                                new_resnet,
                                 new_channels,
                                 old_conv,
                                 old_conv_args,
@@ -269,15 +270,13 @@ def make_fusion_resnet_backbone(resnet,
         new_conv.weight.data[:, i:i + chunk_size] = pretrained_weights
         i += chunk_size
         remaining_channels -= chunk_size
-
-    new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
     new_resnet.conv1 = new_conv
 
     backbone = nn.Sequential(
         SplitTensor(size_or_sizes=(3, new_channels), dim=1),
         Parallel([nn.Identity(),
                   ResNetFeatureMapsExtractor(new_resnet)]),
-        ResNetFeatureMapsExtractor(resnet, mode='fusion'))
+        ResNetFeatureMapsExtractor(old_resnet, mode='fusion'))
     return backbone
 
 
@@ -308,8 +307,10 @@ def make_segm_fpn_resnet(name='resnet18',
             backbone = ResNetFeatureMapsExtractor(resnet)
         elif pretrained and in_channels > 3:
             new_channels = in_channels - 3
+            new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
             backbone = make_fusion_resnet_backbone(
                 resnet,
+                new_resnet,
                 new_channels,
                 old_conv,
                 old_conv_args,
