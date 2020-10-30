@@ -41,7 +41,6 @@ class SplitTensor(nn.Module):
 
 class AddTensors(nn.Module):
     def forward(self, inps):
-        print([i.shape for i in inps])
         return sum(inps)
 
 
