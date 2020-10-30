@@ -41,7 +41,8 @@ class SplitTensor(nn.Module):
 
 class AddTensors(nn.Module):
     def forward(self, inps):
-        return sum(inps)
+        print([i.shape for i in inps])
+        return torch.sum(inps)
 
 
 class AddAcross(nn.Module):
