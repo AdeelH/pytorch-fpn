@@ -58,11 +58,14 @@ class PanopticFPN(nn.Sequential):
             size=in_feats_shapes[0][-2:],
             num_ups=num_ups,
             g=num_groups_for_norm)
+        # yapf: disable
         layers = [
-            in_convs, upsamplers,
+            in_convs,
+            upsamplers,
             AddTensors(),
             nn.Conv2d(hidden_channels // 2, out_channels, kernel_size=1)
         ]
+        # yapf: enable
         super().__init__(*layers)
 
     @classmethod
@@ -305,18 +308,22 @@ def make_segm_fpn_resnet(name='resnet18',
             # just replace the first conv layer
             resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
             backbone = ResNetFeatureMapsExtractor(resnet)
-        elif pretrained and in_channels > 3:
-            new_channels = in_channels - 3
-            new_resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-            backbone = make_fusion_resnet_backbone(
-                resnet,
-                new_resnet,
-                new_channels,
-                old_conv,
-                old_conv_args,
-                copy_weights=True)
-        else:
-            raise NotImplementedError()
+        else
+            if in_channels > 3:
+                new_channels = in_channels - 3
+                resnet_constructor = tv.models.resnet.__dict__[name]
+                new_resnet = resnet_constructor(pretrained=pretrained)
+                backbone = make_fusion_resnet_backbone(
+                    resnet,
+                    new_resnet,
+                    new_channels,
+                    old_conv,
+                    old_conv_args,
+                    copy_weights=True)
+            else:
+                resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+                resnet.conv1.weight.data = old_conv.weight.data[:, in_channels]
+                backbone = ResNetFeatureMapsExtractor(resnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
     if fpn_type == 'fpn':
@@ -345,7 +352,10 @@ def make_segm_fpn_resnet(name='resnet18',
     else:
         raise NotImplementedError()
 
+    # yapf: disable
     model = nn.Sequential(
-        backbone, fpn,
+        backbone,
+        fpn,
         Interpolate(size=out_size, mode='bilinear', align_corners=True))
+    # yapf: enable
     return model
