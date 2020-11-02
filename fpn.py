@@ -308,7 +308,7 @@ def make_segm_fpn_resnet(name='resnet18',
             # just replace the first conv layer
             resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
             backbone = ResNetFeatureMapsExtractor(resnet)
-        else
+        else:
             if in_channels > 3:
                 new_channels = in_channels - 3
                 resnet_constructor = tv.models.resnet.__dict__[name]
@@ -321,7 +321,8 @@ def make_segm_fpn_resnet(name='resnet18',
                     old_conv_args,
                     copy_weights=True)
             else:
-                resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+                resnet.conv1 = nn.Conv2d(
+                    in_channels=in_channels, **old_conv_args)
                 resnet.conv1.weight.data = old_conv.weight.data[:, in_channels]
                 backbone = ResNetFeatureMapsExtractor(resnet)
 
