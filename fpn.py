@@ -326,8 +326,7 @@ def make_segm_fpn_resnet(name: str = 'resnet18',
                 new_resnet = resnet_constructor(pretrained=pretrained)
                 new_resnet.conv1 = copy_conv_weights(old_conv, new_conv)
 
-                backbone = make_fusion_resnet_backbone(
-                    resnet, new_resnet, copy_weights=True)
+                backbone = make_fusion_resnet_backbone(resnet, new_resnet)
             else:
                 new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
                 resnet.conv1 = copy_conv_weights(old_conv, new_conv)
