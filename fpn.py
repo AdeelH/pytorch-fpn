@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 from torch import nn
 import torchvision as tv
@@ -255,41 +257,44 @@ def make_segm_fpn_efficientnet(name='efficientnet_b0',
     return model
 
 
-def make_fusion_resnet_backbone(old_resnet,
-                                new_resnet,
-                                new_channels,
-                                old_conv,
-                                old_conv_args,
-                                copy_weights=True):
+def make_fusion_resnet_backbone(old_resnet: nn.Module,
+                                new_resnet: nn.Module) -> nn.Module:
     """ Create a parallel backbone with multi-point fusion. """
-    new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
-
-    # copy over pretrained weights, repeat if new_channels > 3
-    i = 0
-    remaining_channels = new_channels
-    while remaining_channels > 0:
-        chunk_size = min(remaining_channels, 3)
-        pretrained_weights = old_conv.weight.data[:, :chunk_size]
-        new_conv.weight.data[:, i:i + chunk_size] = pretrained_weights
-        i += chunk_size
-        remaining_channels -= chunk_size
-    new_resnet.conv1 = new_conv
+    new_conv = new_resnet.conv1
 
     backbone = nn.Sequential(
-        SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+        SplitTensor(size_or_sizes=(3, new_conv.in_channels), dim=1),
         Parallel([nn.Identity(),
                   ResNetFeatureMapsExtractor(new_resnet)]),
         ResNetFeatureMapsExtractor(old_resnet, mode='fusion'))
     return backbone
 
 
-def make_segm_fpn_resnet(name='resnet18',
-                         fpn_type='fpn',
-                         out_size=(224, 224),
-                         fpn_channels=256,
-                         num_classes=1000,
-                         pretrained=True,
-                         in_channels=3):
+def copy_conv_weights(src_conv: nn.Conv2d,
+                      dst_conv: nn.Conv2d,
+                      start_idx: int = 0) -> nn.Module:
+    remaining_channels = src_conv.in_channels - start_idx
+    i = start_idx
+    while remaining_channels > 0:
+        chunk_size = min(remaining_channels, 3)
+        pretrained_weights = src_conv.weight.data[:, :chunk_size]
+        dst_conv.weight.data[:, i:i + chunk_size] = pretrained_weights
+        i += chunk_size
+        remaining_channels -= chunk_size
+    return dst_conv
+
+
+def make_segm_fpn_resnet(name: str = 'resnet18',
+                         fpn_type: str = 'fpn',
+                         out_size: Tuple[int] = (224, 224),
+                         fpn_channels: int = 256,
+                         num_classes: int = 1000,
+                         pretrained: bool = True,
+                         in_channels: int = 3) -> nn.Module:
+    assert in_channels > 0
+    assert num_classes > 0
+    assert out_size[0] > 0 and out_size[1] > 0
+
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
     if in_channels == 3:
         backbone = ResNetFeatureMapsExtractor(resnet)
@@ -306,24 +311,24 @@ def make_segm_fpn_resnet(name='resnet18',
         }
         if not pretrained:
             # just replace the first conv layer
-            resnet.conv1 = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+            new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+            resnet.conv1 = new_conv
             backbone = ResNetFeatureMapsExtractor(resnet)
         else:
             if in_channels > 3:
                 new_channels = in_channels - 3
+                new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
+
                 resnet_constructor = tv.models.resnet.__dict__[name]
                 new_resnet = resnet_constructor(pretrained=pretrained)
+                new_resnet.conv1 = copy_conv_weights(old_conv, new_conv)
+
                 backbone = make_fusion_resnet_backbone(
-                    resnet,
-                    new_resnet,
-                    new_channels,
-                    old_conv,
-                    old_conv_args,
-                    copy_weights=True)
+                    resnet, new_resnet, copy_weights=True)
             else:
-                resnet.conv1 = nn.Conv2d(
-                    in_channels=in_channels, **old_conv_args)
-                resnet.conv1.weight.data = old_conv.weight.data[:, in_channels]
+                new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
+                pretrained_weights = old_conv.weight.data[:, :in_channels]
+                resnet.conv1 = copy_conv_weights(old_conv, new_conv)
                 backbone = ResNetFeatureMapsExtractor(resnet)
 
     feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
