@@ -272,13 +272,16 @@ def make_fusion_resnet_backbone(old_resnet: nn.Module,
 
 def copy_conv_weights(src_conv: nn.Conv2d,
                       dst_conv: nn.Conv2d,
-                      start_idx: int = 0) -> nn.Module:
-    remaining_channels = src_conv.in_channels - start_idx
-    i = start_idx
+                      dst_start_idx: int = 0) -> nn.Module:
+    src_channels = src_conv.in_channels
+    dst_channels = dst_conv.in_channels - dst_start_idx
+
+    remaining_channels = dst_channels
+    i = dst_start_idx
     while remaining_channels > 0:
-        chunk_size = min(remaining_channels, 3)
-        pretrained_weights = src_conv.weight.data[:, :chunk_size]
-        dst_conv.weight.data[:, i:i + chunk_size] = pretrained_weights
+        chunk_size = min(remaining_channels, src_channels)
+        pt_weights = src_conv.weight.data[:, :chunk_size]
+        dst_conv.weight.data[:, i:i + chunk_size] = pt_weights
         i += chunk_size
         remaining_channels -= chunk_size
     return dst_conv
@@ -327,7 +330,6 @@ def make_segm_fpn_resnet(name: str = 'resnet18',
                     resnet, new_resnet, copy_weights=True)
             else:
                 new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
-                pretrained_weights = old_conv.weight.data[:, :in_channels]
                 resnet.conv1 = copy_conv_weights(old_conv, new_conv)
                 backbone = ResNetFeatureMapsExtractor(resnet)
 
