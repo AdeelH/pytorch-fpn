@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Sequence, Optional, Iterable
 
 import torch
 from torch import nn
@@ -11,22 +11,79 @@ from layers import (Residual, Interpolate, Reverse, AddTensors, SelectOne,
 
 
 class FPN(nn.Sequential):
+    """
+    Implementation of the architecture described in
+    "Feature Pyramid Networks for Object Detection" by Lin et al.,
+    https://arxiv.com/abs/1612.03144.
+
+    Takes in an n-tuple of feature maps in reverse order
+    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
+    the nth feature map is the one produced by the earliest layer in the
+    backbone network.
+
+    The feature maps are passed through the architecture shown below, producing
+    n outputs, such that the height and width of the ith output is equal to
+    that of the corresponding input feature map and the number of channels
+    is equal to out_channels.
+
+    Returns all outputs as a tuple in the order:
+    (nth out, (n-1)th out, ..., 1st out)
+
+    1st feat. map ────[1st in_conv]──────┬─────[1st out_conv]────> 1st out
+                                         │
+                                     [upsample]
+                                         │
+                                         V
+    2nd feat. map ────[2nd in_conv]────>(+)────[2nd out_conv]────> 2nd out
+                                         │
+                                     [upsample]
+                                         │
+                                         V
+            .               .                        .                .
+            .               .                        .                .
+            .               .                        .                .
+                                         │
+                                     [upsample]
+                                         │
+                                         V
+    nth feat. map ────[nth in_conv]────>(+)────[nth out_conv]────> nth out
+
+    """
+
     def __init__(self,
-                 in_feats_shapes: list,
+                 in_feats_shapes: Sequence[Tuple[int, ...]],
                  hidden_channels: int = 256,
                  out_channels: int = 2):
+        """Constructor.
+
+        Args:
+            in_feats_shapes (Sequence[Tuple[int, ...]]): Shapes of the feature
+                maps that will be fed into the network. These are expected to
+                be tuples of the form (., C, H, ...).
+            hidden_channels (int, optional): The number of channels to which
+                all feature maps are convereted before being added together.
+                Defaults to 256.
+            out_channels (int, optional): Number of output channels. This will
+                normally be the number of classes. Defaults to 2.
+        """
+        # reverse so that the deepest (i.e. produced by the deepest layer in
+        # the backbone network) feature map is first.
+        in_feats_shapes = in_feats_shapes[::-1]
+        in_feats_channels = [s[1] for s in in_feats_shapes]
+
+        # 1x1 conv to make the channels of all feature maps the same
         in_convs = Parallel([
-            nn.Conv2d(s[1], hidden_channels, kernel_size=1)
-            for s in in_feats_shapes[::-1]
+            nn.Conv2d(in_channels, hidden_channels, kernel_size=1)
+            for in_channels in in_feats_channels
         ])
         upsample_and_add = SequentialMultiInputMultiOutput(*[
             Residual(
-                Interpolate(size=s[-2:], mode='bilinear', align_corners=True))
-            for s in in_feats_shapes[::-1]
+                Interpolate(size=s[2:], mode='bilinear', align_corners=False))
+            for s in in_feats_shapes
         ])
         out_convs = Parallel([
             nn.Conv2d(hidden_channels, out_channels, kernel_size=3, padding=1)
-            for s in in_feats_shapes[::-1]
+            for s in in_feats_shapes
         ])
         # yapf: disable
         layers = [
@@ -41,15 +98,81 @@ class FPN(nn.Sequential):
 
 
 class PanopticFPN(nn.Sequential):
+    """
+    Implementation of the architecture described in
+    "Panoptic Feature Pyramid Networks" by Kirilov et al.,
+    https://arxiv.com/abs/1901.02446.
+
+    Takes in an n-tuple of feature maps in reverse order
+    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
+    the nth feature map is the one produced by the earliest layer in the
+    backbone network.
+
+    The feature maps are passed through the architecture shown below, producing
+    a single final output, with out_channels channels.
+
+    1st feat. map ──[1st in_conv]──>──[1st upsampler]──────┐
+                                                           │
+                                                           │
+                                                           V
+    2nd feat. map ──[2nd in_conv]──>──[2nd upsampler]────>(+)
+                                                           │
+                                                           │
+                                                           V
+          .               .                  .             .
+          .               .                  .             .
+          .               .                  .             .
+                                                           │
+                                                           │
+                                                           V
+    nth feat. map ──[nth in_conv]──>──[nth upsampler]────>(+)
+                                                           │
+                                                           │
+                                                           V
+                                                          out
+    """
+
     def __init__(self,
-                 in_feats_shapes: list,
+                 in_feats_shapes: Sequence[Tuple[int, ...]],
                  hidden_channels: int = 256,
                  out_channels: int = 2,
-                 num_ups: list = None,
-                 num_groups_for_norm=32):
+                 out_size: Optional[int] = None,
+                 num_upsamples_per_layer: Optional[Sequence[int]] = None,
+                 upsamplng_factor: int = 2,
+                 num_groups_for_norm: int = 32):
+        """Constructor.
 
-        if num_ups is None:
-            num_ups = list(range(len(in_feats_shapes)))
+        Args:
+            in_feats_shapes (Sequence[Tuple[int, ...]]): Shapes of the feature
+                maps that will be fed into the network. These are expected to
+                be tuples of the form (., C, H, ...).
+            hidden_channels (int, optional): The number of channels to which
+                all feature maps are convereted before being added together.
+                Defaults to 256.
+            out_channels (int, optional): Number of output channels. This will
+                normally be the number of classes. Defaults to 2.
+            out_size (Optional[int], optional): Size of output. If None, 
+                the size of the first feature map will be used.
+                Defaults to None.
+            num_upsamples_per_layer (Optional[Sequence[int]], optional): Number
+                of upsampling iterations for each feature map. Will depend on
+                the size of the feature map. Each upsampling iteration
+                comprises a conv-group_norm-relu block followed by a scaling
+                using torch.nn.functional.interpolate.
+                If None, each feature map is assumed to be half the size of the
+                preceeding one, meaning that it requires one more upsampling
+                iteration than the last one.
+                Defaults to None.
+            upsamplng_factor (int, optional): How much to scale per upsampling
+                iteration. Defaults to 2.
+            num_groups_for_norm (int, optional): Number of groups for group
+                norm layers. Defaults to 32.
+        """
+        if num_upsamples_per_layer is None:
+            num_upsamples_per_layer = list(range(len(in_feats_shapes)))
+
+        if out_size is None:
+            out_size = in_feats_shapes[0][-2:]
 
         in_convs = Parallel([
             nn.Conv2d(s[1], hidden_channels, kernel_size=1)
@@ -57,56 +180,97 @@ class PanopticFPN(nn.Sequential):
         ])
         upsamplers = self._make_upsamplers(
             c=hidden_channels,
-            size=in_feats_shapes[0][-2:],
-            num_ups=num_ups,
-            g=num_groups_for_norm)
+            size=out_size,
+            num_upsamples_per_layer=num_upsamples_per_layer,
+            num_groups=num_groups_for_norm)
+        out_conv = nn.Conv2d(hidden_channels // 2, out_channels, kernel_size=1)
+
         # yapf: disable
         layers = [
             in_convs,
             upsamplers,
             AddTensors(),
-            nn.Conv2d(hidden_channels // 2, out_channels, kernel_size=1)
+            out_conv
         ]
         # yapf: enable
         super().__init__(*layers)
 
     @classmethod
-    def _make_upsamplers(cls, c, size, num_ups, g=32):
-        upsamplers = Parallel(
-            [cls._upsample_feat(c, u, size, g=g) for u in num_ups])
+    def _make_upsamplers(cls,
+                         in_channels: int,
+                         size: int,
+                         num_upsamples_per_layer: Iterable[int],
+                         num_groups: int = 32) -> Parallel:
+        layers = []
+        for num_upsamples in num_upsamples_per_layer:
+            upsampler = cls._upsample_feat(
+                in_channels=in_channels,
+                num_upsamples=num_upsamples,
+                size=size,
+                num_groups=num_groups)
+            layers.append(upsampler)
+
+        upsamplers = Parallel(layers)
         return upsamplers
 
     @classmethod
-    def _upsample_feat(cls, c, num_up, size, g=32):
-        if num_up == 0:
-            return cls._upsample_once(c, out_c=c // 2, scale=1, g=g)
+    def _upsample_feat(cls,
+                       in_channels: int,
+                       num_upsamples: int,
+                       size: int,
+                       scale_factor: float = 2.,
+                       num_groups: int = 32) -> nn.Sequential:
+        if num_upsamples == 0:
+            return cls._make_upsampling_block(
+                in_channels=in_channels,
+                out_channels=in_channels // 2,
+                scale=1,
+                num_groups=num_groups)
         blocks = []
-        for _ in range(num_up - 1):
-            blocks.append(cls._upsample_once(c, scale=2, g=g))
-        blocks.append(cls._upsample_once(c, out_c=c // 2, size=size, g=g))
+        for _ in range(num_upsamples - 1):
+            blocks.append(
+                cls._make_upsampling_block(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    scale=scale_factor,
+                    num_groups=num_groups))
+        blocks.append(
+            cls._make_upsampling_block(
+                in_channels=in_channels,
+                out_channels=in_channels // 2,
+                size=size,
+                num_groups=num_groups))
         return nn.Sequential(*blocks)
 
     @classmethod
-    def _upsample_once(cls, in_c, out_c=None, scale=2, size=None, g=32):
-        if out_c is None:
-            out_c = in_c
-        layers = [
-            nn.Conv2d(in_c, out_c, kernel_size=3, padding=1),
-            nn.GroupNorm(num_channels=out_c, num_groups=g),
+    def _make_upsampling_block(cls,
+                               in_channels: int,
+                               out_channels: int = None,
+                               scale: float = 2,
+                               size: int = None,
+                               num_groups: int = 32) -> nn.Sequential:
+        if out_channels is None:
+            out_channels = in_channels
+
+        # conv block that preserves size
+        conv_block = [
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+            nn.GroupNorm(num_channels=out_channels, num_groups=num_groups),
             nn.ReLU(inplace=True)
         ]
         if scale == 1:
-            return nn.Sequential(*layers)
+            # don't upsample
+            return nn.Sequential(*conv_block)
 
         if size is None:
-            interp = Interpolate(
-                scale_factor=scale, mode='bilinear', align_corners=True)
+            upsample_layer = Interpolate(
+                scale_factor=scale, mode='bilinear', align_corners=False)
         else:
-            interp = Interpolate(
-                size=size, mode='bilinear', align_corners=True)
+            upsample_layer = Interpolate(
+                size=size, mode='bilinear', align_corners=False)
 
-        layers.append(interp)
-        return nn.Sequential(*layers)
+        conv_block.append(upsample_layer)
+        return nn.Sequential(*conv_block)
 
 
 class PANetFPN(nn.Sequential):
@@ -173,8 +337,10 @@ class ResNetFeatureMapsExtractor(nn.Module):
         ]
         # yapf: enable
         if mode == 'fusion':
-            self.m = SequentialMultiInputMultiOutput(
-                stem, *[nn.Sequential(AddTensors(), m) for m in layers])
+            self.m = nn.Sequential(
+                Parallel([stem, nn.Identity()]),
+                SequentialMultiInputMultiOutput(
+                    *[nn.Sequential(AddTensors(), m) for m in layers]))
         else:
             self.m = SequentialMultiOutput(stem, *layers)
 
@@ -182,7 +348,7 @@ class ResNetFeatureMapsExtractor(nn.Module):
         if self.mode != 'fusion':
             return self.m(x)
         x, inps = x
-        return self.m((x, *inps))
+        return self.m((x, inps))
 
 
 def _load_efficientnet(name,

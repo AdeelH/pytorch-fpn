@@ -1,4 +1,5 @@
-import torch
+from typing import Tuple, Callable, Any, Union
+
 from torch import nn
 
 
@@ -7,28 +8,84 @@ class Parallel(nn.ModuleList):
     Returns a tuple of outputs.
     '''
 
-    def forward(self, xs):
-        if isinstance(xs, torch.Tensor):
-            return tuple(m(xs) for m in self)
-        return tuple(m(x) for m, x in zip(self, xs))
+    def forward(self, xs: Union[Any, list, tuple]) -> tuple:
+        if isinstance(xs, (list, tuple)):
+            return tuple(m(x) for m, x in zip(self, xs))
+        return tuple(m(xs) for m in self)
 
 
 class SequentialMultiOutput(nn.Sequential):
-    def forward(self, x):
-        outputs = [None] * len(self)
-        out = x
+    """
+    Like nn.Squential but returns all intermediate outputs as a tuple.
+
+      input
+        │
+        │
+        V
+    [1st layer]───────> 1st out
+        │
+        │
+        V
+    [2nd layer]───────> 2nd out
+        │
+        │
+        V
+        .
+        .
+        .
+        │
+        │
+        V
+    [nth layer]───────> nth out
+
+    """
+
+    def forward(self, x: Any) -> tuple:
+        outs = [None] * len(self)
+        last_out = x
         for i, module in enumerate(self):
-            out = module(out)
-            outputs[i] = out
-        return outputs
+            last_out = module(last_out)
+            outs[i] = last_out
+        return tuple(outs)
 
 
 class SequentialMultiInputMultiOutput(nn.Sequential):
-    def forward(self, inps):
-        outputs = [None] * len(self)
-        out = self[0](inps[0])
-        outputs[0] = out
-        for i, (module, inp) in enumerate(zip(self[1:], inps[1:]), start=1):
-            out = module((inp, out))
-            outputs[i] = out
-        return outputs
+    """
+    Takes in an n-tuple of the form
+    (last_out, (1st input, 2nd input, ..., nth input))
+    and passes them through the architecture shown below, returning a tuple
+    of all outputs (1st out, 2nd out, ..., nth out).
+
+    In words: the ith layer in this sequenntial takes in as inputs the
+    ith input and the output of the last layer i.e. the (i-1)th layer.
+    For the 1st layer, the "output of the last layer" is last_out.
+
+                      last_out
+                          │
+                          │
+                          V
+    1st input ───────[1st layer]───────> 1st out
+                          │
+                          │
+                          V
+    2nd input ───────[2nd layer]───────> 2nd out
+                          │
+                          │
+                          V
+        .                 .                  .
+        .                 .                  .
+        .                 .                  .
+                          │
+                          │
+                          V
+    nth input ───────[nth layer]───────> nth out
+
+    """
+
+    def forward(self, inps: Tuple[Any, Tuple[Callable]]) -> tuple:
+        last_out, layer_inps = inps
+        outs = [None] * len(self)
+        for i, (module, layer_inp) in enumerate(zip(self, layer_inps)):
+            last_out = module((last_out, layer_inp))
+            outs[i] = last_out
+        return tuple(outs)
