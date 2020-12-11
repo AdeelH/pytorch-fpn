@@ -62,7 +62,7 @@ def make_fused_backbone(old_backbone: nn.Module, new_backbone: nn.Module,
     https://vision.in.tum.de/_media/spezial/bib/hazirbasma2016fusenet.pdf.
     """
     backbone = nn.Sequential(
-        SplitTensor(size_or_sizes=channel_split, dim=1),
+        SplitTensor(channel_split, dim=1),
         Parallel([nn.Identity(),
                   featureMapExtractorCls(new_backbone)]),
         featureMapExtractorCls(old_backbone, mode='fusion'))

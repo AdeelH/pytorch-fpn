@@ -191,7 +191,7 @@ def make_segm_fpn_efficientnet(name: str = 'efficientnet_b0',
             in_channels=new_channels,
         )
         backbone = nn.Sequential(
-            SplitTensor(size_or_sizes=(3, new_channels), dim=1),
+            SplitTensor((3, new_channels), dim=1),
             Parallel([
                 EfficientNetFeatureMapsExtractor(effnet),
                 EfficientNetFeatureMapsExtractor(new_effnet)
