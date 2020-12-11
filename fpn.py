@@ -1,18 +1,14 @@
 from typing import Tuple, Sequence, Optional, Iterable
 
-import torch
 from torch import nn
-import torchvision as tv
 
-from containers import (Parallel, SequentialMultiInputMultiOutput,
-                        SequentialMultiOutput)
-from layers import (Residual, Interpolate, Reverse, AddTensors, SelectOne,
-                    AddAcross, SplitTensor)
+from containers import (Parallel, SequentialMultiInputMultiOutput)
+from layers import (Residual, Interpolate, Reverse, Sum)
 
 
 class FPN(nn.Sequential):
     """
-    Implementation of the architecture described in
+    Implementation of the architecture described in the paper
     "Feature Pyramid Networks for Object Detection" by Lin et al.,
     https://arxiv.com/abs/1612.03144.
 
@@ -99,7 +95,7 @@ class FPN(nn.Sequential):
 
 class PanopticFPN(nn.Sequential):
     """
-    Implementation of the architecture described in
+    Implementation of the architecture described in the paper
     "Panoptic Feature Pyramid Networks" by Kirilov et al.,
     https://arxiv.com/abs/1901.02446.
 
@@ -179,7 +175,7 @@ class PanopticFPN(nn.Sequential):
             for s in in_feats_shapes
         ])
         upsamplers = self._make_upsamplers(
-            c=hidden_channels,
+            in_channels=hidden_channels,
             size=out_size,
             num_upsamples_per_layer=num_upsamples_per_layer,
             num_groups=num_groups_for_norm)
@@ -189,7 +185,7 @@ class PanopticFPN(nn.Sequential):
         layers = [
             in_convs,
             upsamplers,
-            AddTensors(),
+            Sum(),
             out_conv
         ]
         # yapf: enable
@@ -274,20 +270,49 @@ class PanopticFPN(nn.Sequential):
 
 
 class PANetFPN(nn.Sequential):
-    def __init__(self,
-                 in_feats_shapes: list,
-                 hidden_channels: int = 256,
-                 out_channels: int = 2):
-        fpn1 = FPN(
-            in_feats_shapes,
-            hidden_channels=hidden_channels,
-            out_channels=hidden_channels)
-        in_feats_shapes = [(n, hidden_channels, h, w)
-                           for (n, c, h, w) in in_feats_shapes]
-        fpn2 = FPN(
-            in_feats_shapes[::-1],
-            hidden_channels=hidden_channels,
-            out_channels=out_channels)
+    """
+    Implementation of the architecture described in the paper
+    "Path Aggregation Network for Instance Segmentation" by Liu et al.,
+    https://arxiv.com/abs/1803.01534. This architecture adds a bottom-up path
+    after the top-down path in a normal FPN. It can be thought of as a normal
+    FPN followed by a flipped FPN.
+
+    Takes in an n-tuple of feature maps in reverse order
+    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
+    the nth feature map is the one produced by the earliest layer in the
+    backbone network.
+
+    The feature maps are passed through the architecture shown below, producing
+    n outputs, such that the height and width of the ith output is equal to
+    that of the corresponding input feature map and the number of channels
+    is equal to out_channels.
+
+    Returns all outputs as a tuple in the order:
+    (nth out, (n-1)th out, ..., 1st out)
+
+    (nth feature map, (n-1)th feature map, ..., 1st feature map)
+                             │
+                         [1st FPN]
+                             │
+                             V
+                             │
+                 [Reverse the order of outputs]
+                             │
+                             V
+                             │
+                         [2nd FPN]
+                             │
+                             V
+                             │
+                 [Reverse the order of outputs]
+                             │
+                             │
+                             V
+             (nth out, (n-1)th out, ..., 1st out)
+
+    """
+
+    def __init__(self, fpn1: nn.Module, fpn2: nn.Module):
         # yapf: disable
         layers = [
             fpn1,
@@ -297,238 +322,3 @@ class PANetFPN(nn.Sequential):
         ]
         # yapf: enable
         super().__init__(*layers)
-
-
-def _get_shapes(m, ch=3, sz=224):
-    state = m.training
-    m.eval()
-    with torch.no_grad():
-        feats = m(torch.empty(1, ch, sz, sz))
-    m.train(state)
-    return [f.shape for f in feats]
-
-
-class EfficientNetFeatureMapsExtractor(nn.Module):
-    def __init__(self, effnet):
-        super().__init__()
-        self.m = effnet
-
-    def forward(self, x):
-        feats = self.m.extract_endpoints(x)
-        return list(feats.values())
-
-
-class ResNetFeatureMapsExtractor(nn.Module):
-    def __init__(self, model, mode=None):
-        super().__init__()
-        self.mode = mode
-        # yapf: disable
-        stem = nn.Sequential(
-            model.conv1,
-            model.bn1,
-            model.relu,
-            model.maxpool
-        )
-        layers = [
-            model.layer1,
-            model.layer2,
-            model.layer3,
-            model.layer4,
-        ]
-        # yapf: enable
-        if mode == 'fusion':
-            self.m = nn.Sequential(
-                Parallel([stem, nn.Identity()]),
-                SequentialMultiInputMultiOutput(
-                    *[nn.Sequential(AddTensors(), m) for m in layers]))
-        else:
-            self.m = SequentialMultiOutput(stem, *layers)
-
-    def forward(self, x):
-        if self.mode != 'fusion':
-            return self.m(x)
-        x, inps = x
-        return self.m((x, inps))
-
-
-def _load_efficientnet(name,
-                       num_classes=1000,
-                       pretrained='imagenet',
-                       in_channels=3):
-    model = torch.hub.load(
-        'lukemelas/EfficientNet-PyTorch',
-        name,
-        num_classes=num_classes,
-        pretrained=pretrained,
-        in_channels=in_channels)
-    return model
-
-
-def make_segm_fpn_efficientnet(name='efficientnet_b0',
-                               fpn_type='fpn',
-                               out_size=(224, 224),
-                               fpn_channels=256,
-                               num_classes=1000,
-                               pretrained='imagenet',
-                               in_channels=3):
-    effnet = _load_efficientnet(
-        name=name, num_classes=num_classes, pretrained=pretrained)
-    if in_channels > 3:
-        new_channels = in_channels - 3
-        new_effnet = _load_efficientnet(
-            name=name,
-            num_classes=num_classes,
-            pretrained=pretrained,
-            in_channels=new_channels,
-        )
-        backbone = nn.Sequential(
-            SplitTensor(size_or_sizes=(3, new_channels), dim=1),
-            Parallel([
-                EfficientNetFeatureMapsExtractor(effnet),
-                EfficientNetFeatureMapsExtractor(new_effnet)
-            ]), AddAcross())
-    else:
-        backbone = EfficientNetFeatureMapsExtractor(effnet)
-
-    feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
-    if fpn_type == 'fpn':
-        fpn = nn.Sequential(
-            FPN(feats_shapes,
-                hidden_channels=fpn_channels,
-                out_channels=num_classes),
-            SelectOne(idx=0))
-    elif fpn_type == 'panoptic':
-        fpn = PanopticFPN(
-            feats_shapes,
-            hidden_channels=fpn_channels,
-            out_channels=num_classes)
-    elif fpn_type == 'panet+fpn':
-        feats_shapes2 = [(n, fpn_channels, h, w)
-                         for (n, c, h, w) in feats_shapes]
-        fpn = nn.Sequential(
-            PANetFPN(
-                feats_shapes,
-                hidden_channels=fpn_channels,
-                out_channels=fpn_channels),
-            FPN(feats_shapes2,
-                hidden_channels=fpn_channels,
-                out_channels=num_classes),
-            SelectOne(idx=0))
-    else:
-        raise NotImplementedError()
-
-    model = nn.Sequential(
-        backbone, fpn,
-        Interpolate(size=out_size, mode='bilinear', align_corners=True))
-    return model
-
-
-def make_fusion_resnet_backbone(old_resnet: nn.Module,
-                                new_resnet: nn.Module) -> nn.Module:
-    """ Create a parallel backbone with multi-point fusion. """
-    new_conv = new_resnet.conv1
-
-    backbone = nn.Sequential(
-        SplitTensor(size_or_sizes=(3, new_conv.in_channels), dim=1),
-        Parallel([nn.Identity(),
-                  ResNetFeatureMapsExtractor(new_resnet)]),
-        ResNetFeatureMapsExtractor(old_resnet, mode='fusion'))
-    return backbone
-
-
-def copy_conv_weights(src_conv: nn.Conv2d,
-                      dst_conv: nn.Conv2d,
-                      dst_start_idx: int = 0) -> nn.Module:
-    src_channels = src_conv.in_channels
-    dst_channels = dst_conv.in_channels - dst_start_idx
-
-    remaining_channels = dst_channels
-    i = dst_start_idx
-    while remaining_channels > 0:
-        chunk_size = min(remaining_channels, src_channels)
-        pt_weights = src_conv.weight.data[:, :chunk_size]
-        dst_conv.weight.data[:, i:i + chunk_size] = pt_weights
-        i += chunk_size
-        remaining_channels -= chunk_size
-    return dst_conv
-
-
-def make_segm_fpn_resnet(name: str = 'resnet18',
-                         fpn_type: str = 'fpn',
-                         out_size: Tuple[int] = (224, 224),
-                         fpn_channels: int = 256,
-                         num_classes: int = 1000,
-                         pretrained: bool = True,
-                         in_channels: int = 3) -> nn.Module:
-    assert in_channels > 0
-    assert num_classes > 0
-    assert out_size[0] > 0 and out_size[1] > 0
-
-    resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-    if in_channels == 3:
-        backbone = ResNetFeatureMapsExtractor(resnet)
-    else:
-        old_conv = resnet.conv1
-        old_conv_args = {
-            'out_channels': old_conv.out_channels,
-            'kernel_size': old_conv.kernel_size,
-            'stride': old_conv.stride,
-            'padding': old_conv.padding,
-            'dilation': old_conv.dilation,
-            'groups': old_conv.groups,
-            'bias': old_conv.bias
-        }
-        if not pretrained:
-            # just replace the first conv layer
-            new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
-            resnet.conv1 = new_conv
-            backbone = ResNetFeatureMapsExtractor(resnet)
-        else:
-            if in_channels > 3:
-                new_channels = in_channels - 3
-                new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
-
-                resnet_constructor = tv.models.resnet.__dict__[name]
-                new_resnet = resnet_constructor(pretrained=pretrained)
-                new_resnet.conv1 = copy_conv_weights(old_conv, new_conv)
-
-                backbone = make_fusion_resnet_backbone(resnet, new_resnet)
-            else:
-                new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
-                resnet.conv1 = copy_conv_weights(old_conv, new_conv)
-                backbone = ResNetFeatureMapsExtractor(resnet)
-
-    feats_shapes = _get_shapes(backbone, ch=in_channels, sz=out_size[0])
-    if fpn_type == 'fpn':
-        fpn = nn.Sequential(
-            FPN(feats_shapes,
-                hidden_channels=fpn_channels,
-                out_channels=num_classes),
-            SelectOne(idx=0))
-    elif fpn_type == 'panoptic':
-        fpn = PanopticFPN(
-            feats_shapes,
-            hidden_channels=fpn_channels,
-            out_channels=num_classes)
-    elif fpn_type == 'panet+fpn':
-        feats_shapes2 = [(n, fpn_channels, h, w)
-                         for (n, c, h, w) in feats_shapes]
-        fpn = nn.Sequential(
-            PANetFPN(
-                feats_shapes,
-                hidden_channels=fpn_channels,
-                out_channels=fpn_channels),
-            FPN(feats_shapes2,
-                hidden_channels=fpn_channels,
-                out_channels=num_classes),
-            SelectOne(idx=0))
-    else:
-        raise NotImplementedError()
-
-    # yapf: disable
-    model = nn.Sequential(
-        backbone,
-        fpn,
-        Interpolate(size=out_size, mode='bilinear', align_corners=True))
-    # yapf: enable
-    return model

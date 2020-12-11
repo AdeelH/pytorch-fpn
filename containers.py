@@ -9,8 +9,11 @@ class Parallel(nn.ModuleList):
     '''
 
     def forward(self, xs: Union[Any, list, tuple]) -> tuple:
+        # if multiple inputs, pass the 1st input through the 1st module,
+        # the 2nd input through the 2nd module, and so on.
         if isinstance(xs, (list, tuple)):
             return tuple(m(x) for m, x in zip(self, xs))
+        # if single input, pass it through all modules
         return tuple(m(xs) for m in self)
 
 
