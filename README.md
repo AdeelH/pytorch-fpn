@@ -33,3 +33,5 @@ model = torch.hub.load(
 )
 
 ```
+
+Working example on Colab: https://colab.research.google.com/drive/1pjkw-QoqiXgKDrEYZ47EwfXcW7vgO4KX?usp=sharing
