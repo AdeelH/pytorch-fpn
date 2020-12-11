@@ -8,7 +8,7 @@ from containers import Parallel
 from layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
 from fpn import (FPN, PanopticFPN, PANetFPN)
 from utils import (copy_conv_weights, _get_shapes)
-from backbone import (ResNetFeatureMapsExtractor, make_fused_backbone,
+from backbone import (ResNetFeatureMapsExtractor, make_fusion_resnet_backbone,
                       EfficientNetFeatureMapsExtractor)
 
 
@@ -84,7 +84,7 @@ def make_segm_fpn_resnet(name: str = 'resnet18',
                 new_resnet = resnet_cls(pretrained=pretrained)
                 new_resnet.conv1 = copy_conv_weights(old_conv, new_conv)
 
-                backbone = make_fused_backbone(resnet, new_resnet)
+                backbone = make_fusion_resnet_backbone(resnet, new_resnet)
             else:
                 new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
                 resnet.conv1 = copy_conv_weights(old_conv, new_conv)
