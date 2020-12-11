@@ -58,7 +58,8 @@ def make_fused_backbone(old_backbone: nn.Module, new_backbone: nn.Module,
                         featureMapExtractorCls: Type,
                         channel_split: Tuple[int, int]) -> nn.Module:
     """Create a fused backbone using FuseNet style feature fusion.
-    See the paper, "FuseNet", by Hazirbas et al. for details.
+    See the paper, "FuseNet", by Hazirbas et al., 
+    https://vision.in.tum.de/_media/spezial/bib/hazirbasma2016fusenet.pdf.
     """
     backbone = nn.Sequential(
         SplitTensor(size_or_sizes=channel_split, dim=1),
