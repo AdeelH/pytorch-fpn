@@ -32,13 +32,20 @@ class ModulizedFunction(nn.Module):
 
 
 class Interpolate(ModulizedFunction):
-    def __init__(self, *args, **kwargs):
-        super().__init__(F.interpolate, *args, **kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(F.interpolate, **kwargs)
 
 
-class SplitTensor(ModulizedFunction):
-    def __init__(self, *args, **kwargs):
-        super().__init__(torch.split, *args, **kwargs)
+class SplitTensor(nn.Module):
+    """ Wrapper around `torch.split` """
+
+    def __init__(self, size_or_sizes, dim):
+        super().__init__()
+        self.size_or_sizes = size_or_sizes
+        self.dim = dim
+
+    def forward(self, X):
+        return X.split(self.size_or_sizes, dim=self.dim)
 
 
 class Sum(nn.Module):
