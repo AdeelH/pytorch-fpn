@@ -13,8 +13,8 @@ class FPN(nn.Sequential):
     https://arxiv.com/abs/1612.03144.
 
     Takes in an n-tuple of feature maps in reverse order
-    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
-    the nth feature map is the one produced by the earliest layer in the
+    (1st feature map, 2nd feature map, ..., nth feature map), where
+    the 1st feature map is the one produced by the earliest layer in the
     backbone network.
 
     The feature maps are passed through the architecture shown below, producing
@@ -22,27 +22,28 @@ class FPN(nn.Sequential):
     that of the corresponding input feature map and the number of channels
     is equal to out_channels.
 
-    Returns all outputs as a tuple in the order:
-    (nth out, (n-1)th out, ..., 1st out)
+    Returns all outputs as a tuple like so: (1st out, 2nd out, ..., nth out)
 
-    1st feat. map ────[1st in_conv]──────┬─────[1st out_conv]────> 1st out
-                                         │
-                                     [upsample]
-                                         │
-                                         V
-    2nd feat. map ────[2nd in_conv]────>(+)────[2nd out_conv]────> 2nd out
-                                         │
-                                     [upsample]
-                                         │
-                                         V
-            .               .                        .                .
-            .               .                        .                .
-            .               .                        .                .
-                                         │
-                                     [upsample]
-                                         │
-                                         V
-    nth feat. map ────[nth in_conv]────>(+)────[nth out_conv]────> nth out
+    Architecture diagram:
+
+    nth feat. map ────────[nth in_conv]────────>(+)────────[nth out_conv]────> nth out
+                                                 │
+                                             [upsample]
+                                                 │
+                                                 V
+    (n-1)th feat. map ────[(n-1)th in_conv]────>(+)────[(n-1)th out_conv]────> (n-1)th out
+                                                 │
+                                             [upsample]
+                                                 │
+                                                 V
+            .                     .                           .                    .
+            .                     .                           .                    .
+            .                     .                           .                    .
+                                                 │
+                                             [upsample]
+                                                 │
+                                                 V
+    1st feat. map ────────[1st in_conv]────────>(+)────────[1st out_conv]────> 1st out
 
     """
 
@@ -100,32 +101,34 @@ class PanopticFPN(nn.Sequential):
     https://arxiv.com/abs/1901.02446.
 
     Takes in an n-tuple of feature maps in reverse order
-    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
-    the nth feature map is the one produced by the earliest layer in the
+    (1st feature map, 2nd feature map, ..., nth feature map), where
+    the 1st feature map is the one produced by the earliest layer in the
     backbone network.
 
     The feature maps are passed through the architecture shown below, producing
     a single final output, with out_channels channels.
 
-    1st feat. map ──[1st in_conv]──>──[1st upsampler]──────┐
-                                                           │
-                                                           │
-                                                           V
-    2nd feat. map ──[2nd in_conv]──>──[2nd upsampler]────>(+)
-                                                           │
-                                                           │
-                                                           V
-          .               .                  .             .
-          .               .                  .             .
-          .               .                  .             .
-                                                           │
-                                                           │
-                                                           V
-    nth feat. map ──[nth in_conv]──>──[nth upsampler]────>(+)
-                                                           │
-                                                           │
-                                                           V
-                                                          out
+    Architecture diagram:
+
+    nth feat. map ────[nth in_conv]─────────>───[nth upsampler]──────────┐
+                                                                         │
+                                                                         │
+                                                                         V
+    (n-1)th feat. map ──[(n-1)th in_conv]───>───[(n-1)th upsampler]────>(+)
+                                                                         │
+                                                                         │
+                                                                         V
+          .                     .                     .
+          .                     .                     .
+          .                     .                     .
+                                                                         │
+                                                                         │
+                                                                         V
+    1st feat. map ────[1st in_conv]─────────>───[1st upsampler]─────────(+)
+                                                                         │
+                                                                         │
+                                                                         V
+                                                                        out
     """
 
     def __init__(self,
@@ -278,8 +281,8 @@ class PANetFPN(nn.Sequential):
     FPN followed by a flipped FPN.
 
     Takes in an n-tuple of feature maps in reverse order
-    (nth feature map, (n-1)th feature map, ..., 1st feature map), where
-    the nth feature map is the one produced by the earliest layer in the
+    (1st feature map, 2nd feature map, ..., nth feature map), where
+    the 1st feature map is the one produced by the earliest layer in the
     backbone network.
 
     The feature maps are passed through the architecture shown below, producing
@@ -287,28 +290,29 @@ class PANetFPN(nn.Sequential):
     that of the corresponding input feature map and the number of channels
     is equal to out_channels.
 
-    Returns all outputs as a tuple in the order:
-    (nth out, (n-1)th out, ..., 1st out)
+    Returns all outputs as a tuple like so: (1st out, 2nd out, ..., nth out)
 
-    (nth feature map, (n-1)th feature map, ..., 1st feature map)
-                             │
-                         [1st FPN]
-                             │
-                             V
-                             │
-                 [Reverse the order of outputs]
-                             │
-                             V
-                             │
-                         [2nd FPN]
-                             │
-                             V
-                             │
-                 [Reverse the order of outputs]
-                             │
-                             │
-                             V
-             (nth out, (n-1)th out, ..., 1st out)
+    Architecture diagram:
+
+            (1st feature map, 2nd feature map, ..., nth feature map)
+                                    │
+                                [1st FPN]
+                                    │
+                                    V
+                                    │
+                        [Reverse the order of outputs]
+                                    │
+                                    V
+                                    │
+                                [2nd FPN]
+                                    │
+                                    V
+                                    │
+                        [Reverse the order of outputs]
+                                    │
+                                    │
+                                    V
+                       (1st out, 2nd out, ..., nth out)
 
     """
 

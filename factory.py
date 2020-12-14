@@ -12,13 +12,13 @@ from backbone import (ResNetFeatureMapsExtractor, make_fusion_resnet_backbone,
                       EfficientNetFeatureMapsExtractor)
 
 
-def make_segm_fpn_resnet(name: str = 'resnet18',
-                         fpn_type: str = 'fpn',
-                         out_size: Tuple[int, int] = (224, 224),
-                         fpn_channels: int = 256,
-                         num_classes: int = 1000,
-                         pretrained: bool = True,
-                         in_channels: int = 3) -> nn.Module:
+def make_fpn_resnet(name: str = 'resnet18',
+                    fpn_type: str = 'fpn',
+                    out_size: Tuple[int, int] = (224, 224),
+                    fpn_channels: int = 256,
+                    num_classes: int = 1000,
+                    pretrained: bool = True,
+                    in_channels: int = 3) -> nn.Module:
     """Create an FPN model with a ResNet backbone.
 
     If `in_channels > 3`, uses the fusion technique described in the paper,
@@ -139,13 +139,13 @@ def _load_efficientnet(name: str,
     return model
 
 
-def make_segm_fpn_efficientnet(name: str = 'efficientnet_b0',
-                               fpn_type: str = 'fpn',
-                               out_size: Tuple[int, int] = (224, 224),
-                               fpn_channels: int = 256,
-                               num_classes: int = 1000,
-                               pretrained: Optional[str] = 'imagenet',
-                               in_channels: str = 3) -> nn.Module:
+def make_fpn_efficientnet(name: str = 'efficientnet_b0',
+                          fpn_type: str = 'fpn',
+                          out_size: Tuple[int, int] = (224, 224),
+                          fpn_channels: int = 256,
+                          num_classes: int = 1000,
+                          pretrained: Optional[str] = 'imagenet',
+                          in_channels: str = 3) -> nn.Module:
     """Loads the PyTorch implementation of EfficientNet from
     https://github.com/lukemelas/EfficientNet-PyTorch using torch.hub.
 
@@ -169,7 +169,7 @@ def make_segm_fpn_efficientnet(name: str = 'efficientnet_b0',
             than 3, a parallel backbone is added to incorporate the new
             channels and the feature maps of the two backbones are added
             together to produce the final feature maps. Note that this is
-            currently different from make_segm_fpn_resnet. See
+            currently different from make_fpn_resnet. See
             lukemelas/EfficientNet-PyTorch for the in_channels < 3 case.
             Defaults to 3.
 

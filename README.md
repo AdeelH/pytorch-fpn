@@ -9,9 +9,9 @@ The implementations are all based on `nn.Sequential` with no fancy forward metho
 
 
 # Multiband images
-The factory methods `make_segm_fpn_resnet` and `make_segm_fpn_efficientnet` support `in_channels != 3`.
+The factory methods `make_fpn_resnet` and `make_fpn_efficientnet` support `in_channels != 3`.
 
-`make_segm_fpn_resnet`, in particular, makes use of the fusion technique described in the paper, *FuseNet*, by Hazirbas et al. (https://vision.in.tum.de/_media/spezial/bib/hazirbasma2016fusenet.pdf) if `in_channels > 3` that adds a parallel resnet backbone for the new channels. All the pretrained weights are retained.
+`make_fpn_resnet`, in particular, makes use of the fusion technique described in the paper, *FuseNet*, by Hazirbas et al. (https://vision.in.tum.de/_media/spezial/bib/hazirbasma2016fusenet.pdf) if `in_channels > 3` that adds a parallel resnet backbone for the new channels. All the pretrained weights are retained.
 
 
 # Loading through torch.hub
@@ -23,7 +23,7 @@ import torch
 
 model = torch.hub.load(
 	'AdeelH/pytorch-fpn',
-	'make_segm_fpn_resnet',
+	'make_fpn_resnet',
 	name='resnet18',
 	fpn_type='panoptic',
 	num_classes=2,

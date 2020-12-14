@@ -54,12 +54,12 @@ class SequentialMultiOutput(nn.Sequential):
 
 class SequentialMultiInputMultiOutput(nn.Sequential):
     """
-    Takes in an n-tuple of the form
+    Takes in an 2-tuple of the form
     (last_out, (1st input, 2nd input, ..., nth input))
-    and passes them through the architecture shown below, returning a tuple
-    of all outputs (1st out, 2nd out, ..., nth out).
+    and passes it through the architecture shown below, returning a tuple
+    of all outputs: (1st out, 2nd out, ..., nth out).
 
-    In words: the ith layer in this sequenntial takes in as inputs the
+    In words: the ith layer in this sequential takes in as inputs the
     ith input and the output of the last layer i.e. the (i-1)th layer.
     For the 1st layer, the "output of the last layer" is last_out.
 
