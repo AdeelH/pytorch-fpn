@@ -32,8 +32,9 @@ class ModulizedFunction(nn.Module):
 
 
 class Interpolate(ModulizedFunction):
-    def __init__(self, **kwargs):
-        super().__init__(F.interpolate, **kwargs)
+    def __init__(self, mode='bilinear', align_corners=False, **kwargs):
+        super().__init__(
+            F.interpolate, mode='bilinear', align_corners=False, **kwargs)
 
 
 class SplitTensor(nn.Module):

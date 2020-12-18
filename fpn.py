@@ -3,7 +3,7 @@ from typing import Tuple, Sequence, Optional, Iterable
 from torch import nn
 
 from containers import (Parallel, SequentialMultiInputMultiOutput)
-from layers import (Residual, Interpolate, Reverse, Sum)
+from layers import (Interpolate, Reverse, Sum)
 
 
 class FPN(nn.Sequential):
@@ -26,7 +26,7 @@ class FPN(nn.Sequential):
 
     Architecture diagram:
 
-    nth feat. map ────────[nth in_conv]────────>(+)────────[nth out_conv]────> nth out
+    nth feat. map ────────[nth in_conv]──────────┐────────[nth out_conv]────> nth out
                                                  │
                                              [upsample]
                                                  │
@@ -73,20 +73,27 @@ class FPN(nn.Sequential):
             nn.Conv2d(in_channels, hidden_channels, kernel_size=1)
             for in_channels in in_feats_channels
         ])
-        upsample_and_add = SequentialMultiInputMultiOutput(*[
-            Residual(
-                Interpolate(size=s[2:], mode='bilinear', align_corners=False))
-            for s in in_feats_shapes
-        ])
+
+        # yapf: disable
+        def resize_and_add(to_size):
+            return nn.Sequential(
+                Parallel([nn.Identity(), Interpolate(size=to_size)]),
+                Sum()
+            )
+
+        top_down_layer = SequentialMultiInputMultiOutput(
+            nn.Identity(),
+            *[resize_and_add(shape[-2:]) for shape in in_feats_shapes[1:]]
+        )
+
         out_convs = Parallel([
             nn.Conv2d(hidden_channels, out_channels, kernel_size=3, padding=1)
-            for s in in_feats_shapes
+            for _ in in_feats_shapes
         ])
-        # yapf: disable
         layers = [
             Reverse(),
             in_convs,
-            upsample_and_add,
+            top_down_layer,
             out_convs,
             Reverse()
         ]
