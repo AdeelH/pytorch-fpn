@@ -163,8 +163,8 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
             predictions. Determines the channel width of the output.
             Defaults to 1000.
         pretrained (Optional[str], optional): One of
-            None | 'imagenet' | 'advprop'. See lukemelas/EfficientNet-PyTorch
-            for details. Defaults to True.
+            False | 'imagenet' | 'advprop'. See lukemelas/EfficientNet-PyTorch
+            for details. Defaults to 'imagenet'.
         in_channels (int, optional): Channel width of the input. If greater
             than 3, a parallel backbone is added to incorporate the new
             channels and the feature maps of the two backbones are added
@@ -179,25 +179,31 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
     Returns:
         nn.Module: the FPN model
     """
-    effnet = _load_efficientnet(
-        name=name, num_classes=num_classes, pretrained=pretrained)
-
-    if in_channels > 3:
+    if in_channels <= 3:
+        effnet = _load_efficientnet(
+            name=name,
+            num_classes=num_classes,
+            in_channels=in_channels,
+            pretrained=pretrained)
+        backbone = EfficientNetFeatureMapsExtractor(effnet)
+    else:
+        effnet = _load_efficientnet(
+            name=name,
+            num_classes=num_classes,
+            in_channels=3,
+            pretrained=pretrained)
         new_channels = in_channels - 3
         new_effnet = _load_efficientnet(
             name=name,
             num_classes=num_classes,
             pretrained=pretrained,
-            in_channels=new_channels,
-        )
+            in_channels=new_channels)
         backbone = nn.Sequential(
             SplitTensor((3, new_channels), dim=1),
             Parallel([
                 EfficientNetFeatureMapsExtractor(effnet),
                 EfficientNetFeatureMapsExtractor(new_effnet)
             ]), AddAcross())
-    else:
-        backbone = EfficientNetFeatureMapsExtractor(effnet)
 
     feat_shapes = _get_shapes(backbone, channels=in_channels, size=out_size)
     if fpn_type == 'fpn':
@@ -211,18 +217,18 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
             feat_shapes,
             hidden_channels=fpn_channels,
             out_channels=num_classes)
-    elif fpn_type == 'panet+fpn':
-        feat_shapes2 = [(n, fpn_channels, h, w)
-                        for (n, c, h, w) in feat_shapes]
-        fpn = nn.Sequential(
-            PANetFPN(
-                feat_shapes,
-                hidden_channels=fpn_channels,
-                out_channels=fpn_channels),
-            FPN(feat_shapes2,
-                hidden_channels=fpn_channels,
-                out_channels=num_classes),
-            SelectOne(idx=0))
+    elif fpn_type == 'panet':
+        fpn1 = FPN(
+            feat_shapes,
+            hidden_channels=fpn_channels,
+            out_channels=fpn_channels)
+
+        feat_shapes = [(n, fpn_channels, h, w) for (n, c, h, w) in feat_shapes]
+        fpn2 = FPN(
+            feat_shapes[::-1],
+            hidden_channels=fpn_channels,
+            out_channels=num_classes)
+        fpn = nn.Sequential(PANetFPN(fpn1, fpn2), SelectOne(idx=0))
     else:
         raise NotImplementedError()
     # yapf: disable
