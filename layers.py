@@ -13,7 +13,7 @@ class Residual(nn.Sequential):
     def __init__(self, layer):
         # yapf: disable
         layers = [
-            Parallel([nn.Identity(), layer]),
+            Parallel([layer, nn.Identity()]),
             Sum()
         ]
         # yapf: enable
