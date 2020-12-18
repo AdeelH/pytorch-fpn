@@ -163,8 +163,9 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
             predictions. Determines the channel width of the output.
             Defaults to 1000.
         pretrained (Optional[str], optional): One of
-            False | 'imagenet' | 'advprop'. See lukemelas/EfficientNet-PyTorch
-            for details. Defaults to 'imagenet'.
+            False | True | 'imagenet' | 'advprop'.
+            See lukemelas/EfficientNet-PyTorch for details.
+            Defaults to 'imagenet'.
         in_channels (int, optional): Channel width of the input. If greater
             than 3, a parallel backbone is added to incorporate the new
             channels and the feature maps of the two backbones are added

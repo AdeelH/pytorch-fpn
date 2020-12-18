@@ -17,14 +17,14 @@ class TestFPN(unittest.TestCase):
                   fpn_type,
                   backbones,
                   in_channels=[3, 1, 8],
-                  pretrained=False,
+                  pretrained=True,
                   fpn_channels=FPN_CHANNELS,
                   num_classes=NUM_CLASSES,
                   size=(IMG_SIZE, IMG_SIZE)):
         for backbone in backbones:
             for ch in in_channels:
-                with self.subTest(
-                        msg=f'{fpn_type}, {backbone}, {ch}-channel input'):
+                test_name = f'{fpn_type}, {backbone}, {ch}-channel input'
+                with self.subTest(msg=test_name):
                     model = factory_fn(
                         name=backbone,
                         fpn_type=fpn_type,
@@ -51,7 +51,7 @@ class TestFPN(unittest.TestCase):
     def test_panoptic_fpn_resnet(self):
         resnets = ['resnet18', 'resnet50', 'resnet101']
         self._test_fpn(
-            factory_fn=make_fpn_resnet, fpn_type='fpn', backbones=resnets)
+            factory_fn=make_fpn_resnet, fpn_type='panoptic', backbones=resnets)
 
     def test_panet_fpn_resnet(self):
         resnets = ['resnet18', 'resnet50', 'resnet101']
