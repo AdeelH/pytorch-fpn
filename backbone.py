@@ -45,9 +45,9 @@ class ResNetFeatureMapsExtractor(nn.Module):
             multi_input_layers = [
                 nn.Sequential(Sum(), layer) for layer in layers
             ]
-            self.m = nn.Sequential(
+            self.m = SequentialMultiInputMultiOutput(
                 stem,
-                SequentialMultiInputMultiOutput(*multi_input_layers)
+                *multi_input_layers
             )
         else:
             self.m = SequentialMultiOutput(stem, *layers)
