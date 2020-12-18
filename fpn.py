@@ -269,11 +269,9 @@ class PanopticFPN(nn.Sequential):
             return nn.Sequential(*conv_block)
 
         if size is None:
-            upsample_layer = Interpolate(
-                scale_factor=scale, mode='bilinear', align_corners=False)
+            upsample_layer = Interpolate(scale_factor=scale)
         else:
-            upsample_layer = Interpolate(
-                size=size, mode='bilinear', align_corners=False)
+            upsample_layer = Interpolate(size=size)
 
         conv_block.append(upsample_layer)
         return nn.Sequential(*conv_block)

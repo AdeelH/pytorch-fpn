@@ -121,7 +121,7 @@ def make_fpn_resnet(name: str = 'resnet18',
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size, mode='bilinear', align_corners=True))
+        Interpolate(size=out_size))
     # yapf: enable
     return model
 
@@ -235,6 +235,6 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size, mode='bilinear', align_corners=False))
+        Interpolate(size=out_size))
     # yapf: enable
     return model
