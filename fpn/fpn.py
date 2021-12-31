@@ -2,8 +2,8 @@ from typing import Tuple, Sequence, Optional, Iterable
 
 from torch import nn
 
-from containers import (Parallel, SequentialMultiInputMultiOutput)
-from layers import (Interpolate, Reverse, Sum)
+from fpn.containers import (Parallel, SequentialMultiInputMultiOutput)
+from fpn.layers import (Interpolate, Reverse, Sum)
 
 
 class FPN(nn.Sequential):

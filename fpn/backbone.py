@@ -2,9 +2,9 @@ from typing import Tuple, Optional, Type
 
 from torch import nn
 
-from containers import (Parallel, SequentialMultiInputMultiOutput,
+from fpn.containers import (Parallel, SequentialMultiInputMultiOutput,
                         SequentialMultiOutput)
-from layers import (Sum, SplitTensor)
+from fpn.layers import (Sum, SplitTensor)
 
 
 class EfficientNetFeatureMapsExtractor(nn.Module):

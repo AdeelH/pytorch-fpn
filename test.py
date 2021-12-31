@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from factory import make_fpn_resnet, make_fpn_efficientnet
+from fpn.factory import make_fpn_resnet, make_fpn_efficientnet
 
 DEVICE = 'cuda:0'
 
