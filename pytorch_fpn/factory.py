@@ -19,6 +19,7 @@ def make_fpn_resnet(name: str = 'resnet18',
                     fpn_channels: int = 256,
                     num_classes: int = 1000,
                     pretrained: bool = True,
+                    backbone_weights: Optional[str] = None,
                     in_channels: int = 3) -> nn.Module:
     """Create an FPN model with a ResNet backbone.
 
@@ -42,6 +43,8 @@ def make_fpn_resnet(name: str = 'resnet18',
             Defaults to 1000.
         pretrained (bool, optional): Whether to use pretrained backbone.
             Defaults to True.
+        backbone_weights (bool, optional): Weights for the backbone.
+            Defaults to None.
         in_channels (int, optional): Channel width of the input. If less than
             3, conv1 is replaced with a smaller one. If greater than 3, a
             FuseNet-style architecture is used to incorporate the new channels.
@@ -58,6 +61,10 @@ def make_fpn_resnet(name: str = 'resnet18',
     assert out_size[0] > 0 and out_size[1] > 0
 
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
+
+    if backbone_weights is not None:
+        resnet.load_state_dict(torch.load(backbone_weights), strict=False)
+
     if in_channels == 3:
         backbone = ResNetFeatureMapsExtractor(resnet)
     else:
