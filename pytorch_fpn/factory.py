@@ -4,12 +4,13 @@ import torch
 from torch import nn
 import torchvision as tv
 
-from fpn.containers import Parallel
-from fpn.layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
-from fpn.fpn import (FPN, PanopticFPN, PANetFPN)
-from fpn.utils import (copy_conv_weights, _get_shapes)
-from fpn.backbone import (ResNetFeatureMapsExtractor, make_fusion_resnet_backbone,
-                      EfficientNetFeatureMapsExtractor)
+from pytorch_fpn.containers import Parallel
+from pytorch_fpn.layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
+from pytorch_fpn.fpn import (FPN, PanopticFPN, PANetFPN)
+from pytorch_fpn.utils import (copy_conv_weights, _get_shapes)
+from pytorch_fpn.backbone import (ResNetFeatureMapsExtractor,
+                                  make_fusion_resnet_backbone,
+                                  EfficientNetFeatureMapsExtractor)
 
 
 def make_fpn_resnet(name: str = 'resnet18',

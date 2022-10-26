@@ -3,9 +3,9 @@
 # Optional list of dependencies required by the package
 dependencies = ['torch']
 
-from fpn.containers import *
-from fpn.layers import *
-from fpn.fpn import *
-from fpn.backbone import *
-from fpn.factory import *
-from fpn.utils import *
+from pytorch_fpn.containers import *
+from pytorch_fpn.layers import *
+from pytorch_fpn.fpn import *
+from pytorch_fpn.backbone import *
+from pytorch_fpn.factory import *
+from pytorch_fpn.utils import *
