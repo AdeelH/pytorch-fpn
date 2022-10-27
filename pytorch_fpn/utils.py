@@ -83,8 +83,7 @@ def download_from_s3(uri: str, download_path: str) -> None:
             unit='B',
             unit_scale=True,
             unit_divisor=1024,
-            mininterval=0.5,
-            delay=5)
+            mininterval=0.5)
         with progressbar as bar:
             s3.download_file(
                 Bucket=bucket,
