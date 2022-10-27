@@ -54,3 +54,47 @@ def _get_shapes(model: nn.Module,
 
     feat_shapes = [f.shape for f in feats]
     return feat_shapes
+
+
+def download_from_s3(uri: str, download_path: str) -> None:
+    """Download a file from S3."""
+    try:
+        import boto3
+    except ImportError as e:
+        e.msg + ' (boto3 is required for downloading files from S3)'
+        raise e
+
+    from urllib.parse import urlparse
+
+    s3 = boto3.Session().client('s3')
+    request_payer = 'requester'
+    parsed_uri = urlparse(uri)
+    bucket, key = parsed_uri.netloc, parsed_uri.path[1:]
+
+    file_size = s3.head_object(Bucket=bucket, Key=key)['ContentLength']
+
+    print(f'Downloading {uri} to {download_path}...')
+
+    try:
+        from tqdm.auto import tqdm
+        progressbar = tqdm(
+            total=file_size,
+            desc='Downloading',
+            unit='B',
+            unit_scale=True,
+            unit_divisor=1024,
+            mininterval=0.5,
+            delay=5)
+        with progressbar as bar:
+            s3.download_file(
+                Bucket=bucket,
+                Key=key,
+                Filename=download_path,
+                Callback=lambda bytes: bar.update(bytes),
+                ExtraArgs={'RequestPayer': request_payer})
+    except ImportError:
+        s3.download_file(
+            Bucket=bucket,
+            Key=key,
+            Filename=download_path,
+            ExtraArgs={'RequestPayer': request_payer})

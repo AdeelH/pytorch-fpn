@@ -7,7 +7,8 @@ import torchvision as tv
 from pytorch_fpn.containers import Parallel
 from pytorch_fpn.layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
 from pytorch_fpn.fpn import (FPN, PanopticFPN, PANetFPN)
-from pytorch_fpn.utils import (copy_conv_weights, _get_shapes)
+from pytorch_fpn.utils import (copy_conv_weights, _get_shapes,
+                               download_from_s3)
 from pytorch_fpn.backbone import (ResNetFeatureMapsExtractor,
                                   make_fusion_resnet_backbone,
                                   EfficientNetFeatureMapsExtractor)
@@ -43,8 +44,8 @@ def make_fpn_resnet(name: str = 'resnet18',
             Defaults to 1000.
         pretrained (bool, optional): Whether to use pretrained backbone.
             Defaults to True.
-        backbone_weights (bool, optional): Weights for the backbone.
-            Defaults to None.
+        backbone_weights (str, optional): Weights for the backbone. Local path
+            or URL. Defaults to None.
         in_channels (int, optional): Channel width of the input. If less than
             3, conv1 is replaced with a smaller one. If greater than 3, a
             FuseNet-style architecture is used to incorporate the new channels.
@@ -63,7 +64,21 @@ def make_fpn_resnet(name: str = 'resnet18',
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
 
     if backbone_weights is not None:
-        resnet.load_state_dict(torch.load(backbone_weights), strict=False)
+        uri = backbone_weights
+        if uri.startswith('s3://'):
+            from os.path import join
+            from tempfile import TemporaryDirectory
+
+            with TemporaryDirectory() as tmp_dir:
+                download_path = join(tmp_dir, 'backbone_weights.pth')
+                download_from_s3(uri, download_path)
+                state_dict = torch.load(download_path)
+        elif (uri.startswith('http') or uri.startswith('ftp')):
+            state_dict = torch.hub.load_state_dict_from_url(uri)
+        else:
+            state_dict = torch.hub.load(uri)
+
+        resnet.load_state_dict(state_dict, strict=False)
 
     if in_channels == 3:
         backbone = ResNetFeatureMapsExtractor(resnet)
