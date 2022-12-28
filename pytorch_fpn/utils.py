@@ -38,7 +38,7 @@ def _get_shapes(model: nn.Module,
     The model must be an nn.Module whose __call__ method returns all feature
     maps when called with an input.
     """
-    # save state so we can restore laterD
+    # save state so we can restore later
     state = model.training
 
     model.eval()

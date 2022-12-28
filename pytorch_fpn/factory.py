@@ -55,7 +55,8 @@ def make_fpn_resnet(name: str = 'resnet18',
         NotImplementedError: On unknown fpn_style.
 
     Returns:
-        nn.Module: the FPN model
+        nn.Sequential: The FPN model as a sequential of the backbone, FPN
+            layers, and an Interpolation layer.
     """
     assert in_channels > 0
     assert num_classes > 0
@@ -64,6 +65,7 @@ def make_fpn_resnet(name: str = 'resnet18',
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
 
     if backbone_weights is not None:
+        print(f'Loading backbone weights from: {backbone_weights}')
         uri = backbone_weights
         if uri.startswith('s3://'):
             from os.path import join
@@ -76,7 +78,7 @@ def make_fpn_resnet(name: str = 'resnet18',
         elif (uri.startswith('http') or uri.startswith('ftp')):
             state_dict = torch.hub.load_state_dict_from_url(uri)
         else:
-            state_dict = torch.hub.load(uri)
+            state_dict = torch.load(uri)
 
         resnet.load_state_dict(state_dict, strict=False)
 
@@ -140,12 +142,11 @@ def make_fpn_resnet(name: str = 'resnet18',
     else:
         raise NotImplementedError()
 
-    # yapf: disable
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size))
-    # yapf: enable
+        Interpolate(size=out_size),
+    )
     return model
 
 
@@ -255,10 +256,10 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
         fpn = nn.Sequential(PANetFPN(fpn1, fpn2), SelectOne(idx=0))
     else:
         raise NotImplementedError()
-    # yapf: disable
+
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size))
-    # yapf: enable
+        Interpolate(size=out_size),
+    )
     return model
