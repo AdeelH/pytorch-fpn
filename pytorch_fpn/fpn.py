@@ -157,7 +157,7 @@ class PanopticFPN(nn.Sequential):
                 Defaults to 256.
             out_channels (int, optional): Number of output channels. This will
                 normally be the number of classes. Defaults to 2.
-            out_size (Optional[int], optional): Size of output. If None, 
+            out_size (Optional[int], optional): Size of output. If None,
                 the size of the first feature map will be used.
                 Defaults to None.
             num_upsamples_per_layer (Optional[Sequence[int]], optional): Number
