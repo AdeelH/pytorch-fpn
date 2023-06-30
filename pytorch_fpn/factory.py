@@ -7,10 +7,9 @@ import torchvision as tv
 from pytorch_fpn.containers import Parallel
 from pytorch_fpn.layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
 from pytorch_fpn.fpn import (FPN, PanopticFPN, PANetFPN)
-from pytorch_fpn.utils import (copy_conv_weights, _get_shapes)
-from pytorch_fpn.backbone import (ResNetFeatureMapsExtractor,
-                                  make_fusion_resnet_backbone,
-                                  EfficientNetFeatureMapsExtractor)
+from pytorch_fpn.utils import (_get_shapes, load_state_dict)
+from pytorch_fpn.backbone import (EfficientNetFeatureMapsExtractor,
+                                  make_resnet_backbone)
 
 
 def make_fpn_resnet(name: str = 'resnet18',
@@ -19,6 +18,7 @@ def make_fpn_resnet(name: str = 'resnet18',
                     fpn_channels: int = 256,
                     num_classes: int = 1000,
                     pretrained: bool = True,
+                    resnet_weights: Optional[str] = None,
                     in_channels: int = 3) -> nn.Module:
     """Create an FPN model with a ResNet backbone.
 
@@ -42,6 +42,8 @@ def make_fpn_resnet(name: str = 'resnet18',
             Defaults to 1000.
         pretrained (bool, optional): Whether to use pretrained backbone.
             Defaults to True.
+        resnet_weights (str, optional): Weights for the backbone. Local path
+            or URL. Defaults to None.
         in_channels (int, optional): Channel width of the input. If less than
             3, conv1 is replaced with a smaller one. If greater than 3, a
             FuseNet-style architecture is used to incorporate the new channels.
@@ -51,45 +53,19 @@ def make_fpn_resnet(name: str = 'resnet18',
         NotImplementedError: On unknown fpn_style.
 
     Returns:
-        nn.Module: the FPN model
+        nn.Sequential: The FPN model as a sequential of the backbone, FPN
+            layers, and an Interpolation layer.
     """
     assert in_channels > 0
     assert num_classes > 0
     assert out_size[0] > 0 and out_size[1] > 0
 
     resnet = tv.models.resnet.__dict__[name](pretrained=pretrained)
-    if in_channels == 3:
-        backbone = ResNetFeatureMapsExtractor(resnet)
-    else:
-        old_conv = resnet.conv1
-        old_conv_args = {
-            'out_channels': old_conv.out_channels,
-            'kernel_size': old_conv.kernel_size,
-            'stride': old_conv.stride,
-            'padding': old_conv.padding,
-            'dilation': old_conv.dilation,
-            'groups': old_conv.groups,
-            'bias': old_conv.bias
-        }
-        if not pretrained:
-            # just replace the first conv layer
-            new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
-            resnet.conv1 = new_conv
-            backbone = ResNetFeatureMapsExtractor(resnet)
-        else:
-            if in_channels > 3:
-                new_channels = in_channels - 3
-                new_conv = nn.Conv2d(in_channels=new_channels, **old_conv_args)
-
-                resnet_cls = tv.models.resnet.__dict__[name]
-                new_resnet = resnet_cls(pretrained=pretrained)
-                new_resnet.conv1 = copy_conv_weights(old_conv, new_conv)
-
-                backbone = make_fusion_resnet_backbone(resnet, new_resnet)
-            else:
-                new_conv = nn.Conv2d(in_channels=in_channels, **old_conv_args)
-                resnet.conv1 = copy_conv_weights(old_conv, new_conv)
-                backbone = ResNetFeatureMapsExtractor(resnet)
+    if resnet_weights is not None:
+        state_dict = load_state_dict(resnet_weights)
+        resnet.load_state_dict(state_dict, strict=False)
+    backbone = make_resnet_backbone(
+        name, resnet, in_channels=in_channels, pretrained=pretrained)
 
     feat_shapes = _get_shapes(backbone, channels=in_channels, size=out_size)
     if fpn_type == 'fpn':
@@ -118,12 +94,11 @@ def make_fpn_resnet(name: str = 'resnet18',
     else:
         raise NotImplementedError()
 
-    # yapf: disable
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size))
-    # yapf: enable
+        Interpolate(size=out_size),
+    )
     return model
 
 
@@ -233,10 +208,10 @@ def make_fpn_efficientnet(name: str = 'efficientnet_b0',
         fpn = nn.Sequential(PANetFPN(fpn1, fpn2), SelectOne(idx=0))
     else:
         raise NotImplementedError()
-    # yapf: disable
+
     model = nn.Sequential(
         backbone,
         fpn,
-        Interpolate(size=out_size))
-    # yapf: enable
+        Interpolate(size=out_size),
+    )
     return model
