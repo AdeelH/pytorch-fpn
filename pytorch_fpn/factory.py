@@ -7,7 +7,7 @@ import torchvision as tv
 from pytorch_fpn.containers import Parallel
 from pytorch_fpn.layers import (Interpolate, AddAcross, SplitTensor, SelectOne)
 from pytorch_fpn.fpn import (FPN, PanopticFPN, PANetFPN)
-from pytorch_fpn.utils import (_get_shapes, load_state_dict)
+from pytorch_fpn.utils import (_get_shapes, load_state_dict, FrozenModule)
 from pytorch_fpn.backbone import (EfficientNetFeatureMapsExtractor,
                                   make_resnet_backbone)
 
@@ -19,7 +19,8 @@ def make_fpn_resnet(name: str = 'resnet18',
                     num_classes: int = 1000,
                     pretrained: bool = True,
                     resnet_weights: Optional[str] = None,
-                    in_channels: int = 3) -> nn.Module:
+                    in_channels: int = 3,
+                    freeze_backbone: bool = False) -> nn.Module:
     """Create an FPN model with a ResNet backbone.
 
     If `in_channels > 3`, uses the fusion technique described in the paper,
@@ -93,6 +94,10 @@ def make_fpn_resnet(name: str = 'resnet18',
         fpn = nn.Sequential(PANetFPN(fpn1, fpn2), SelectOne(idx=0))
     else:
         raise NotImplementedError()
+
+    if freeze_backbone:
+        print('Freezing FPN backbone')
+        backbone = FrozenModule(backbone)
 
     model = nn.Sequential(
         backbone,

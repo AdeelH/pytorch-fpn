@@ -118,3 +118,28 @@ def load_state_dict(uri: str) -> dict:
     else:
         state_dict = torch.load(uri)
     return state_dict
+
+
+def freeze(module: nn.Module):
+    for p in module.parameters():
+        p.requires_grad = False
+
+
+def unfreeze(module: nn.Module):
+    for p in module.parameters():
+        p.requires_grad = True
+
+
+class FrozenModule(nn.Module):
+    def __init__(self, m: nn.Module) -> None:
+        super().__init__()
+        self.m = m
+        self.m.eval()
+        freeze(self.m)
+
+    def train(self, mode: bool = True) -> 'FrozenModule':
+        """Do nothing."""
+        return self
+
+    def forward(self, *args, **kwargs):
+        return self.m(*args, **kwargs)
